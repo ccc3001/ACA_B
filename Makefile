@@ -17,10 +17,10 @@ CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -g -DUSE_BLAS
 LDLIBS = -lopenblas -lm
 
-example_11: example_11.c $(OBJECTS)
-	$(CC) $(CFLAGS) example_11.c $(OBJECTS) -o $@ $(LDLIBS)
+ kernel_functions: kernel_functions.c $(OBJECTS)
+	$(CC) $(CFLAGS)  kernel_functions.c $(OBJECTS) -o $@ $(LDLIBS)
 
 .PHONY: clean
 
 clean:
-	rm -f *.o example_11
+	rm -f *.o  kernel_functions
