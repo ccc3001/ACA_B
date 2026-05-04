@@ -11,11 +11,14 @@ OBJECTS = \
 	rkmatrix.o \
 	supermatrix.o \
 	interpolation.o \
-	cluster.o
+	cluster.o \
+	new_aca.o \
+	aca_b.o
+
 	
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -g -DUSE_BLAS
-LDLIBS = -lopenblas -lm
+LDLIBS = -lopenblas -lm -llapacke
 
  kernel_functions: kernel_functions.c $(OBJECTS)
 	$(CC) $(CFLAGS)  kernel_functions.c $(OBJECTS) -o $@ $(LDLIBS)
