@@ -398,118 +398,71 @@ double LRnormUp(prkmatrix R,
     return sqrt(s);
 }
 
+
 prkmatrix
-b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A)
-{
+b_aca_rkmatrix_new(double eps,int d, pcfullmatrix A){
+    int k_max;
+    int cols = A->cols; 
     int rows = A->rows;
-    int cols = A->cols;
-    int k_max = min(rows, cols);
+    prkmatrix r;
+    double u=0,v;
+    pfullmatrix C,W,R,Q,T,U_k,V_k;
+    int d_k,i,j,*piv_rows,*piv_cols, *J_bar;
+    r= new_zero_rkmatrix(d,rows,cols);
+    r->kt=0;
+    piv_cols=random_unique(cols,d);
 
-    prkmatrix r = new_zero_rkmatrix(k_max, rows, cols);
-    r->kt = 0;
-
-    int *piv_cols = random_unique(cols, d);
-
-    double u = 0.0, v;
-
-    do {
-        /* --- C --- */
-        pfullmatrix C = new_fullmatrix(rows, d);
-        for (int j = 0; j < d; j++)
-            for (int i = 0; i < rows; i++)
-                C->e[j*rows + i] =
-                    compute_entry_aca_new(r, r->kt, i, piv_cols[j], A);
-
-        /* --- pivot rows --- */
-        pfullmatrix C_T = transpose_fullmatrix(C);
-        pfullmatrix Q, T;
-        int *piv_rows, d_k;
-
-        QR(C_T, 0, &Q, &T, &piv_rows, &d_k);
-
-        /* truncate rows */
-        int *I_k = malloc(d_k * sizeof(int));
-        for (int i = 0; i < d_k; i++)
-            I_k[i] = piv_rows[i];
-        free(piv_rows);
-        piv_rows = I_k;
-
-        /* --- R --- */
-        pfullmatrix R = new_fullmatrix(d_k, cols);
-        for (int i = 0; i < d_k; i++)
-            for (int j = 0; j < cols; j++)
-                R->e[j*d_k + i] =
-                    compute_entry_aca_new(r, r->kt, piv_rows[i], j, A);
-
-        /* --- W --- */
-        pfullmatrix W = new_fullmatrix(d_k, d);
-        for (int i = 0; i < d_k; i++)
-            for (int j = 0; j < d; j++)
-                W->e[j*d_k + i] =
-                    compute_entry_aca_new(r, r->kt,
-                                          piv_rows[i],
-                                          piv_cols[j],
-                                          A);
-
-        /* --- LRID --- */
-        pfullmatrix U_k, V_k;
-        int *Jbar;
-        LRID(C, W, R, eps, &U_k, &V_k, &d_k, &Jbar);
-
-        /* --- update piv_cols using Jbar --- */
-        int *new_cols = malloc(d_k * sizeof(int));
-        for (int i = 0; i < d_k; i++)
-            new_cols[i] = piv_cols[Jbar[i]];
-
-        free(piv_cols);
-        piv_cols = new_cols;
-
-        /* --- update factors --- */
-        int old_k = r->kt;
-
-        for (int k = 0; k < d_k; k++) {
-            for (int i = 0; i < rows; i++)
-                r->a[(old_k + k)*rows + i] =
-                    U_k->e[k*rows + i];
-
-            for (int j = 0; j < cols; j++)
-                r->b[(old_k + k)*cols + j] =
-                    V_k->e[k*V_k->rows + j];
+    k_max=min(cols,rows);
+    do{
+        // select I_k sceleton rows 
+        C= new_fullmatrix(rows,d);
+        for (i=0;i<d;i++){
+            for (j=0;j<rows;j++){
+                C->e[i*rows + j]=compute_entry_aca_new(r,r->kt,j,piv_cols[i],A);
+            }
+        }
+        pfullmatrix C_T=transpose_fullmatrix(C);
+        QR(C_T,0,&Q, &T, &piv_rows, &d_k);
+        
+        // set R TODO: do i need to change d to d_k (side note it should not make a difference since d_k should be d )
+        R=new_fullmatrix(d,cols);
+        for (i=0;i<d;i++){
+            for(j=0;j<cols;j++){
+              R->e[j*d + i]=compute_entry_aca_new(r, r->kt, piv_rows[i], j, A);
+            }
         }
 
-        r->kt += d_k;
+        print_rkmatrix(r);
+        // set W
+        W=new_fullmatrix(d,d);
+        for (i=0;i<d;i++){
+            for (j=0;j<d;j++){
+                W->e[j*d+i]=compute_entry_aca_new(r, r->kt,piv_rows[i],piv_cols[j],A);
+            }
+        }
 
-        /* --- norms --- */
-        v = LRNorm(U_k, V_k);
-        u = LRnormUp(r, U_k, V_k, u, v);
-
-        /* --- new pivot columns --- */
-        int *tmp_cols;
+        //
+        LRID(C,W,R,eps,&U_k,&V_k,&d_k,&J_bar);
+        // update I and J (do i even need to do that? )
+        //...
+        
+        
+        v=LRNorm(U_k,V_k);
+        u=LRnormUp(r,U_k,V_k,u,v);
+        for(i=0;i<d_k;i++){ 
+            for(j=0;j<rows;j++){
+                r->a[(i + r->kt)*rows + j] = U_k->e[i*U_k->rows + j];
+            }
+            for(j=0;j<cols;j++){
+                r->b[(i + r->kt)*cols + j] = V_k->e[i*V_k->rows + j];
+                } 
+        }
+        // select J_k sceleton columns
         int r_out;
-        QR(R, eps, &Q, &T, &tmp_cols, &r_out);
+        QR(R,eps,&Q,&T,&piv_cols,&r_out); //TODO: &r_out ist noch falsch 
+        r->kt+=d_k;//update k 
 
-        int new_d = min(d, cols);
-        int *J_k = malloc(new_d * sizeof(int));
-        for (int i = 0; i < new_d; i++)
-            J_k[i] = tmp_cols[i];
-
-        free(tmp_cols);
-        free(piv_cols);
-        piv_cols = J_k;
-
-        /* cleanup */
-        free(C->e); free(C);
-        free(C_T->e); free(C_T);
-        free(R->e); free(R);
-        free(W->e); free(W);
-        free(U_k->e); free(U_k);
-        free(V_k->e); free(V_k);
-        free(Q->e); free(Q);
-        free(T->e); free(T);
-        free(piv_rows);
-        free(Jbar);
-
-    } while (v >= eps * u && r->kt < k_max);
+    }while(v>=eps*u && (r->kt+d)<k_max);
 
     return r;
 }

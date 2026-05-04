@@ -108,15 +108,15 @@ gaussian_kernel_matrix(int rows, int cols,float h){
 int main()
 {
     pfullmatrix matrix,matrix1 ;
-    matrix = gaussian_kernel_matrix(10,10,0.2);
-    matrix1 = new_random_fullmatrix(40,40,3);
+    matrix = gaussian_kernel_matrix(8,8,0.2);
+    matrix1 = new_random_fullmatrix(8,8,3);
     printf("%.4g\n\n",get_fullmatrix_value(matrix1,0,1));
     print_fullmatrix(matrix1);
     prkmatrix rkmatrix;
     printf("testing new aca algorithm:\n");
     //rkmatrix= aca_rkmatrix_new(0.01,matrix1);
     rkmatrix = b_aca_rkmatrix_new(0.01,2,matrix1);
-    printf("calculated rk matrix successfull");
+    printf("calculated rk matrix successfull\n");
     print_rkmatrix(rkmatrix);
     printf("converting new rkmatrix to full matrix:\n");
     convertrk2_fullmatrix(rkmatrix, matrix1);
