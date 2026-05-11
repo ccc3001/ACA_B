@@ -41,7 +41,8 @@ int* random_unique(int n, int d) {
     return S;
 }
 
-void QR(pfullmatrix W, double eps,
+void QR(pfullmatrix W,
+        double eps,
         pfullmatrix *Q_out,
         pfullmatrix *R_out,
         int **Jbar_out,
@@ -57,21 +58,27 @@ void QR(pfullmatrix W, double eps,
     double *tau = malloc(sizeof(double) * k);
     int *jpvt = calloc(n, sizeof(int));
 
-    LAPACKE_dgeqp3(LAPACK_COL_MAJOR, m, n, A, m, jpvt, tau);
+    /* pivoted QR */
+    LAPACKE_dgeqp3(
+        LAPACK_COL_MAJOR,
+        m,
+        n,
+        A,
+        m,
+        jpvt,
+        tau
+    );
 
     /* convert pivots to 0-based */
-    printf("jpvt:\n");
-    for (int i = 0; i < n; i++){
+    for (int i = 0; i < n; i++)
         jpvt[i]--;
-        printf("%d,",jpvt[i]);
-    }
-    printf("\n");
-    pfullmatrix Q = new_fullmatrix(m, m);
+
+    /* build R */
     pfullmatrix R = new_fullmatrix(m, n);
 
-    /* extract R */
     for (int j = 0; j < n; j++) {
         for (int i = 0; i < m; i++) {
+
             if (i <= j)
                 R->e[j*m + i] = A[j*m + i];
             else
@@ -80,22 +87,42 @@ void QR(pfullmatrix W, double eps,
     }
 
     /* build Q */
-    LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, k, A, m, tau);
+    pfullmatrix Q = new_fullmatrix(m, m);
+
+    LAPACKE_dorgqr(
+        LAPACK_COL_MAJOR,
+        m,
+        m,
+        k,
+        A,
+        m,
+        tau
+    );
 
     memcpy(Q->e, A, sizeof(double) * m * m);
 
-    /* rank */
-    double max_diag = fabs(R->e[0*m + 0]);
+    /* stable numerical rank detection */
+    double pivot_abs = 1e-14;
+
+    double first_pivot =
+        fabs(R->e[0]);
+
     int r = 0;
 
-    if (eps > 0) {
-        for (int i = 0; i < k; i++) {
-            double val = fabs(R->e[i*m + i]);
-            if (val > eps * max_diag)
-                r++;
-        }
-    } else {
-        r = k;
+    for (int i = 0; i < k; i++) {
+
+        double piv =
+            fabs(R->e[i*m + i]);
+
+        /* absolute threshold */
+        if (piv < pivot_abs)
+            break;
+
+        /* relative threshold */
+        if (piv < eps * first_pivot)
+            break;
+
+        r++;
     }
 
     *Q_out = Q;
@@ -106,7 +133,6 @@ void QR(pfullmatrix W, double eps,
     free(A);
     free(tau);
 }
-
 pfullmatrix build_U(pfullmatrix C, int *Jbar, int r)
 {
     int m = C->rows;
@@ -138,7 +164,6 @@ pfullmatrix build_V(pfullmatrix QtR, int r)
 
     return V;
 }
-
 void LRID(pfullmatrix C,
           pfullmatrix W,
           pfullmatrix R,
@@ -148,45 +173,124 @@ void LRID(pfullmatrix C,
           int *r_out,
           int **Jbar_out)
 {
-    pfullmatrix Q, T;
+    pfullmatrix Q;
+    pfullmatrix T;
+
     int *Jbar;
     int r;
 
     QR(W, eps, &Q, &T, &Jbar, &r);
 
-    /* U = C(:, Jbar) */
-    pfullmatrix U = new_fullmatrix(C->rows, r);
-
-    for (int j = 0; j < r; j++) {
-        int col = Jbar[j];
-        for (int i = 0; i < C->rows; i++)
-            U->e[j*C->rows + i] = C->e[col*C->rows + i];
+    if (r <= 0) {
+        *r_out = 0;
+        return;
     }
 
-    /* compute Q^T R */
-    pfullmatrix QtR = new_fullmatrix(Q->cols, R->cols);
+    /* ---------------------------------
+       U = C(:,Jbar(1:r))
+       --------------------------------- */
 
-    cblas_dgemm(CblasColMajor,
-                CblasTrans, CblasNoTrans,
-                Q->cols, R->cols, Q->rows,
-                1.0,
-                Q->e, Q->rows,
-                R->e, R->rows,
-                0.0,
-                QtR->e, QtR->rows);
+    pfullmatrix U =
+        new_fullmatrix(C->rows, r);
 
-    /* solve upper triangular safely */
-    LAPACKE_dtrtrs(LAPACK_COL_MAJOR,
-                   'U','N','N',
-                   r, R->cols,
-                   T->e, T->rows,
-                   QtR->e, QtR->rows);
+    for (int j = 0; j < r; j++) {
 
-    pfullmatrix V = new_fullmatrix(r, R->cols);
+        int col = Jbar[j];
 
-    for (int j = 0; j < R->cols; j++)
-        for (int i = 0; i < r; i++)
-            V->e[j*r + i] = QtR->e[j*QtR->rows + i];
+        for (int i = 0; i < C->rows; i++) {
+
+            U->e[j*C->rows + i] =
+                C->e[col*C->rows + i];
+        }
+    }
+
+    /* ---------------------------------
+       build triangular T11
+       --------------------------------- */
+
+    pfullmatrix T11 =
+        new_fullmatrix(r, r);
+
+    for (int j = 0; j < r; j++) {
+
+        for (int i = 0; i <= j; i++) {
+
+            T11->e[j*r + i] =
+                T->e[j*T->rows + i];
+        }
+    }
+
+    /* ---------------------------------
+       QtR = Q_r^T R
+       only first r columns of Q
+       --------------------------------- */
+
+    pfullmatrix QtR =
+        new_fullmatrix(r, R->cols);
+
+    cblas_dgemm(
+        CblasColMajor,
+        CblasTrans,
+        CblasNoTrans,
+        r,
+        R->cols,
+        Q->rows,
+        1.0,
+        Q->e,
+        Q->rows,
+        R->e,
+        R->rows,
+        0.0,
+        QtR->e,
+        QtR->rows
+    );
+
+    /* ---------------------------------
+       solve T11 * X = QtR
+       --------------------------------- */
+
+    int info = LAPACKE_dtrtrs(
+        LAPACK_COL_MAJOR,
+        'U',
+        'N',
+        'N',
+        r,
+        R->cols,
+        T11->e,
+        r,
+        QtR->e,
+        QtR->rows
+    );
+
+    if (info != 0) {
+
+        printf("dtrtrs failed: %d\n", info);
+
+        del_fullmatrix(U);
+        del_fullmatrix(QtR);
+        del_fullmatrix(Q);
+        del_fullmatrix(T);
+        del_fullmatrix(T11);
+
+        *r_out = 0;
+        return;
+    }
+
+    /* ---------------------------------
+       V
+       --------------------------------- */
+
+    pfullmatrix V =
+        new_fullmatrix(r, R->cols);
+
+    for (int j = 0; j < R->cols; j++) {
+
+        for (int i = 0; i < r; i++) {
+
+            V->e[j*r + i] =
+                QtR->e[j*QtR->rows + i];
+        }
+    }
 
     *U_out = U;
     *V_out = V;
@@ -196,8 +300,8 @@ void LRID(pfullmatrix C,
     del_fullmatrix(QtR);
     del_fullmatrix(Q);
     del_fullmatrix(T);
+    del_fullmatrix(T11);
 }
-
 
 
 
@@ -320,8 +424,8 @@ LRNorm(pcfullmatrix U, pcfullmatrix V)
     );
 
     /* Cholesky */
-    printf("G1 size: %d x %d\n", G1->rows, G1->cols);
-    printf("G2 size: %d x %d\n", G2->rows, G2->cols);
+    //printf("G1 size: %d x %d\n", G1->rows, G1->cols);
+    //printf("G2 size: %d x %d\n", G2->rows, G2->cols);
     T1 = cholesky(G1);
     T2 = cholesky(G2);
 
@@ -411,24 +515,24 @@ b_aca_rkmatrix_new(double eps,int d, pcfullmatrix A){
     r->kt=0;
     do{
         // select I_k sceleton rows 
-        printf("\nd:%d\n",d);
-        printf("\npivot cols:\n");
+        //printf("\nd:%d\n",d);
+        //printf("\npivot cols:\n");
         C= new_fullmatrix(rows,d);
         for (i=0;i<d;i++){
-            printf("%d,",piv_cols[i]);
+            //printf("%d,",piv_cols[i]);
             for (j=0;j<rows;j++){
                 C->e[i*rows + j]=compute_entry_aca_new(r,r->kt,j,piv_cols[i],A);
             }
         }
-        printf("\n");
+        //printf("\n");
         pfullmatrix C_T=transpose_fullmatrix(C);
         QR(C_T,0,&Q, &T, &piv_rows, &d_k);
         
         // set R TODO: do i need to change d to d_k (side note it should not make a difference since d_k should be d )
         R=new_fullmatrix(d,cols);
-        printf("\npivot rows:\n");
+        //printf("\npivot rows:\n");
         for (i=0;i<d;i++){
-            printf("%d",piv_rows[i]);
+            //printf("%d",piv_rows[i]);
             for(j=0;j<cols;j++){
               R->e[j*d + i]=compute_entry_aca_new(r, r->kt, piv_rows[i], j, A);
               
@@ -457,11 +561,11 @@ b_aca_rkmatrix_new(double eps,int d, pcfullmatrix A){
         }
         // update I and J (do i even need to do that? )
         //...
-        printf("U_k");
-        print_fullmatrix(U_k);
-        printf("V_k");
-        print_fullmatrix(V_k);
-        printf("this is kt:%d\n",r->kt);
+        //printf("U_k");
+        //print_fullmatrix(U_k);
+        //printf("V_k");
+        //print_fullmatrix(V_k);
+        //printf("this is kt:%d\n",r->kt);
         v=LRNorm(U_k,V_k);
 
         u=LRnormUp(r,U_k,V_k,u,v);
@@ -470,11 +574,13 @@ b_aca_rkmatrix_new(double eps,int d, pcfullmatrix A){
                 r->a[(i + r->kt)*rows + j] = U_k->e[i*U_k->rows + j];
             }
             for(j=0;j<cols;j++){
-                r->b[(i + r->kt)*cols + j] = V_k->e[i*V_k->rows + j];
+                r->b[(i + r->kt)*cols + j] = V_k->e[j*V_k->rows + i];
+
+            
                 } 
         }
 
-        r->kt+=d;//d_k
+        r->kt+=d_k;//d_k
 
         // select J_k sceleton columns
         int r_out;

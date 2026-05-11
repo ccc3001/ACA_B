@@ -133,8 +133,8 @@ void print_matrix_difference(pcfullmatrix A, pcfullmatrix B)
 int main()
 {
     pfullmatrix matrix,matrix1 ;
-    matrix1 = gaussian_kernel_matrix(5,5,0.2);
-    matrix = new_random_fullmatrix(5,5,4);//12 12 12 1 
+    matrix = gaussian_kernel_matrix(20,20,0.2);
+    matrix1 = new_random_fullmatrix(20,20,4);//12 12 12 1 
     printf("%.4g\n\n",get_fullmatrix_value(matrix,0,1));
     print_fullmatrix(matrix);
     prkmatrix rkmatrix;
