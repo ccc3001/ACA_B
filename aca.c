@@ -25,6 +25,7 @@ compute_entry_aca(pcrkmatrix r, int d, int k, int row, int col,
   /*************/
   /* exercise */
   /*************/
+
   value = test_function(d, x, y); 
   for (i = 0; i < k; i++) { 
     value -= r->a[i*r->rows + row] * r->b[i*r->cols + col];

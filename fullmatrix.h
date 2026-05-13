@@ -60,4 +60,11 @@ eval_fullmatrix(pcfullmatrix f, const double *v, double *w);
 void
 mul_fullmatrix(pcfullmatrix f, pcfullmatrix g, pfullmatrix fg); 
 
+double
+get_fullmatrix_value(pcfullmatrix f, int row, int col);
+
+pfullmatrix 
+transpose_fullmatrix(pcfullmatrix f);
+
+
 #endif

@@ -276,4 +276,30 @@ mul_fullmatrix(pcfullmatrix f, pcfullmatrix g, pfullmatrix fg) {
     }
   }
 }
+  
 #endif
+
+double 
+get_fullmatrix_value(pcfullmatrix f, int rows, int cols){
+  assert(f!=NULL);
+  assert(f->rows >= 0);
+  assert(f->cols >= 0);
+  assert(rows >= 0);
+  assert(cols >= 0);
+  double x =  f->e[cols*f->rows+rows];
+  return x ;
+}
+
+pfullmatrix 
+transpose_fullmatrix(pcfullmatrix f) {
+    int i, j;
+    pfullmatrix t = new_fullmatrix(f->cols, f->rows);
+
+    for (i = 0; i < f->rows; i++) {
+        for (j = 0; j < f->cols; j++) {
+            t->e[i * t->rows + j] = f->e[j * f->rows + i];
+        }
+    }
+
+    return t;
+}
