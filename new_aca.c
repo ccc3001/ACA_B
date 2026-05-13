@@ -48,11 +48,11 @@ aca_rkmatrix_new( double eps, pcfullmatrix A){
     r->kt=0;
     double max_col_value, max_row_value;
     do{
-        printf("iteration:%d\n",k);
+        //printf("iteration:%d\n",k);
         //compute all entries for a pivot col.
         max_col_value=0.0;
         u_k_2=0;
-        printf("\npiv_col:%d\n",piv_col);
+        //printf("\npiv_col:%d\n",piv_col);
         for(i=0;i<rows;i++){
             
             r->a[k*rows+i]= compute_entry_aca_new(r,k,i,piv_col,A);
@@ -62,8 +62,8 @@ aca_rkmatrix_new( double eps, pcfullmatrix A){
             }
             u_k_2+=r->a[k*rows+i]*r->a[k*rows+i];
         }
-        printf("\npiv_row:%d\n",piv_row);
-        printf("\nmax_col_value:%.4g\n",max_col_value);
+        //printf("\npiv_row:%d\n",piv_row);
+        //printf("\nmax_col_value:%.4g\n",max_col_value);
         if (fabs(max_col_value) < 1e-14){
             printf("max_col value is below 1e-14\n");
             break;
@@ -111,9 +111,9 @@ aca_rkmatrix_new( double eps, pcfullmatrix A){
 
         k+=1;
         r->kt+=1;
-        printf("rkt:%d\n",r->kt);
-        printf("%.4g<%.4g\n",sqrt(u)*eps,sqrt(v));
-        printf("%d<%d\n",k,d);
+        //printf("rkt:%d\n",r->kt);
+        //printf("%.4g<%.4g\n",sqrt(u)*eps,sqrt(v));
+        //printf("%d<%d\n",k,d);
     }while(sqrt(u)*eps<=sqrt(v) && k<d);
 
     return r; 
