@@ -13,13 +13,14 @@
 
 #define MAX_LINE 4096
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-int count_columns(char* line)
+int count_columns(char *line)
 {
     int count = 0;
-    char* tmp = strdup(line);
-    char* tok = strtok(tmp, ",\n");
+    char *tmp = strdup(line);
+    char *tok = strtok(tmp, ",\n");
 
-    while (tok) {
+    while (tok)
+    {
         count++;
         tok = strtok(NULL, ",\n");
     }
@@ -28,10 +29,11 @@ int count_columns(char* line)
     return count;
 }
 
-double** read_csv_matrix(const char* filename, int n, int* out_cols)
+double **read_csv_matrix(const char *filename, int n, int *out_cols)
 {
     FILE *fp = fopen(filename, "r");
-    if (!fp) {
+    if (!fp)
+    {
         printf("Error opening file\n");
         return NULL;
     }
@@ -39,7 +41,8 @@ double** read_csv_matrix(const char* filename, int n, int* out_cols)
     char line[MAX_LINE];
 
     // --- Read first line ---
-    if (!fgets(line, MAX_LINE, fp)) {
+    if (!fgets(line, MAX_LINE, fp))
+    {
         fclose(fp);
         return NULL;
     }
@@ -48,13 +51,14 @@ double** read_csv_matrix(const char* filename, int n, int* out_cols)
     *out_cols = cols;
 
     // --- Allocate matrix (column-major like you used) ---
-    double** matrix = malloc(cols * sizeof(double*));
+    double **matrix = malloc(cols * sizeof(double *));
     for (int j = 0; j < cols; j++)
         matrix[j] = malloc(n * sizeof(double));
 
     // --- Fill first row ---
-    char* tok = strtok(line, ",\n");
-    for (int j = 0; j < cols && tok; j++) {
+    char *tok = strtok(line, ",\n");
+    for (int j = 0; j < cols && tok; j++)
+    {
         matrix[j][0] = atof(tok);
         tok = strtok(NULL, ",\n");
     }
@@ -64,7 +68,8 @@ double** read_csv_matrix(const char* filename, int n, int* out_cols)
     while (fgets(line, MAX_LINE, fp) && i < n)
     {
         tok = strtok(line, ",\n");
-        for (int j = 0; j < cols && tok; j++) {
+        for (int j = 0; j < cols && tok; j++)
+        {
             matrix[j][i] = atof(tok);
             tok = strtok(NULL, ",\n");
         }
@@ -75,35 +80,36 @@ double** read_csv_matrix(const char* filename, int n, int* out_cols)
     return matrix;
 }
 
-
-
-
-
 pfullmatrix
-gaussian_kernel_matrix(int rows, int cols,float h){
+gaussian_kernel_matrix(int rows, int cols, int row_offset, int col_offset, float h)
+{
     assert(rows >= 0);
     assert(cols >= 0);
     assert(h > 0);
 
-    int i,j,k,SUSY_cols;
-    double** matrix;
-    matrix=read_csv_matrix("data/susy.csv",MAX(rows,cols),&SUSY_cols);
+    int i, j, k, SUSY_cols;
+    double **matrix;
+    matrix = read_csv_matrix("data/susy.csv", MAX(rows + row_offset, cols + col_offset), &SUSY_cols);
 
-    double h2=2* h * h;
-    pfullmatrix gaussian_matrix = new_fullmatrix(rows,cols); 
-    for (i = 0; i< gaussian_matrix->rows;i++){
-        for (j=0;j< gaussian_matrix->cols;j++){
-            double sum_dist=0;
-            for (k=0;k<8;k++){
-                double dist = matrix[k][i]-matrix[k][j];
-                sum_dist+=dist*dist;
+    double h2 = 2 * h * h;
+    pfullmatrix gaussian_matrix = new_fullmatrix(rows, cols);
+    for (i = 0; i < gaussian_matrix->rows; i++)
+    {
+        int gi = row_offset + i;
+        for (j = 0; j < gaussian_matrix->cols; j++)
+        {
+            int gj = col_offset + j;
+            double sum_dist = 0;
+            for (k = 0; k < 8; k++)
+            {
+                double dist = matrix[k][gi] - matrix[k][gj];
+                sum_dist += dist * dist;
             }
-            gaussian_matrix->e[j*gaussian_matrix->rows+i]=exp(-sum_dist/h2);
+            gaussian_matrix->e[j * gaussian_matrix->rows + i] = exp(-sum_dist / h2);
         };
     };
     return gaussian_matrix;
 }
-
 
 void print_matrix_difference(pcfullmatrix A, pcfullmatrix B)
 {
@@ -116,11 +122,13 @@ void print_matrix_difference(pcfullmatrix A, pcfullmatrix B)
 
     printf("%dx%d matrix (A - B):\n", rows, cols);
 
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
 
-            double a = A->e[j*rows + i];  // column-major
-            double b = B->e[j*rows + i];
+            double a = A->e[j * rows + i]; // column-major
+            double b = B->e[j * rows + i];
 
             double diff = a - b;
 
@@ -129,16 +137,18 @@ void print_matrix_difference(pcfullmatrix A, pcfullmatrix B)
         printf("\n");
     }
 }
-
+/*
 int main()
 {
-    pfullmatrix matrix,matrix1 ;
-    matrix = gaussian_kernel_matrix(20,20,0.2);
-    matrix1 = new_random_fullmatrix(20,20,4);//12 12 12 1 
-    printf("%.4g\n\n",get_fullmatrix_value(matrix,0,1));
+    pfullmatrix matrix, matrix1;
+    matrix = gaussian_kernel_matrix(20, 20, 0.2);
+    matrix1 = new_random_fullmatrix(20, 20, 4); // 12 12 12 1
+    printf("%.4g\n\n", get_fullmatrix_value(matrix, 0, 1));
     print_fullmatrix(matrix);
     prkmatrix rkmatrix;
-    /*printf("testing new aca algorithm:\n");
+*/
+/*
+    printf("testing new aca algorithm:\n");
     //rkmatrix= aca_rkmatrix_new(0.01,matrix1);
     rkmatrix = b_aca_rkmatrix_new(0.1,2,matrix);
     printf("calculated rk matrix successfull\n");
@@ -149,10 +159,13 @@ int main()
     //aca_rkmatrix()
     //print_fullmatrix(matrix);
     print_matrix_difference(matrix,matrix1);
-    printf("test");*/
-    rkmatrix =b_aca_rkmatrix_new(0.01,3,matrix);
+    printf("test");
+*/
+/*
+    rkmatrix = b_aca_rkmatrix_new(0.01, 3, matrix);
     print_rkmatrix(rkmatrix);
-    convertrk2_fullmatrix(rkmatrix,matrix1);
-    print_matrix_difference(matrix,matrix1);
+    convertrk2_fullmatrix(rkmatrix, matrix1);
+    print_matrix_difference(matrix, matrix1);
     return 1;
 }
+*/
