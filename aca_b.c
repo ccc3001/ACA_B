@@ -10,6 +10,7 @@
 #include "basic.h"
 #include "new_aca.h"
 #include "aca.h"
+#include "svd.h"
 
 // #include "blas.h"
 
@@ -778,4 +779,217 @@ b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A)
     free(piv_cols);
 
     return r;
+}
+
+void h_b_aca_rkmatrix_new(double eps, int d, int L, pcfullmatrix A, pfullmatrix *U, pfullmatrix *S, pfullmatrix *V, int *r)
+{
+    int rows = A->rows;
+    int cols = A->cols;
+    // int k_max = min(rows, cols);
+
+    if (L == 0)
+    {
+
+        prkmatrix r_ = b_aca_rkmatrix_new(eps, d, A);
+        *U = new_fullmatrix(rows, r_->kt);
+        pfullmatrix V_ = new_fullmatrix(cols, r_->kt);
+        memcpy((*U)->e, r_->a, rows * r_->kt * sizeof(double));
+        memcpy(V_->e, r_->b, r_->kt * cols * sizeof(double));
+        *V = transpose_fullmatrix(V_);
+
+        (*S) = new_zero_fullmatrix(r_->kt, r_->kt);
+        for (int i = 0; i < r_->kt; i++)
+            (*S)->e[i * (*S)->rows + i] = 1.0;
+        (*r) = r_->kt;
+        return;
+    }
+    if (L > 0)
+    {
+        int row1 = rows / 2;
+        int row2 = rows - row1;
+        int col1 = cols / 2;
+        int col2 = cols - col1;
+        pfullmatrix A11 = new_submatrix(A, 0, 0, row1, col1);
+        pfullmatrix A12 = new_submatrix(A, 0, col1, row1, col2);
+        pfullmatrix A21 = new_submatrix(A, row1, 0, row2, col1);
+        pfullmatrix A22 = new_submatrix(A, row1, col1, row2, col2);
+        pfullmatrix U11, S11, V11;
+        pfullmatrix U12, S12, V12;
+        pfullmatrix U21, S21, V21;
+        pfullmatrix U22, S22, V22;
+        int r11, r12, r21, r22;
+        h_b_aca_rkmatrix_new(eps, d, L - 1, A11, &U11, &S11, &V11, &r11);
+        h_b_aca_rkmatrix_new(eps, d, L - 1, A12, &U12, &S12, &V12, &r12);
+        h_b_aca_rkmatrix_new(eps, d, L - 1, A21, &U21, &S21, &V21, &r21);
+        h_b_aca_rkmatrix_new(eps, d, L - 1, A22, &U22, &S22, &V22, &r22);
+
+        // U_1=[U11*S11, U12*S12]
+        pfullmatrix U_11 = new_fullmatrix(U11->rows, S11->cols);
+        pfullmatrix U_12 = new_fullmatrix(U12->rows, S12->cols);
+        mul_fullmatrix(U11, S11, U_11);
+        mul_fullmatrix(U12, S12, U_12);
+        if (U_11->rows != U_12->rows)
+        {
+            printf("Error: U_11 and U_12 have different number of rows\n");
+            return;
+        }
+
+        pfullmatrix U_1 = new_fullmatrix(U_11->rows, U_11->cols + U_12->cols);
+        for (int j = 0; j < U_11->cols; j++)
+        {
+            for (int i = 0; i < U_11->rows; i++)
+            {
+                U_1->e[j * U_1->rows + i] = U_11->e[j * U_11->rows + i];
+            }
+        }
+        for (int j = 0; j < U_12->cols; j++)
+        {
+            for (int i = 0; i < U_12->rows; i++)
+            {
+                U_1->e[(j + U_11->cols) * U_1->rows + i] = U_12->e[j * U_12->rows + i];
+            }
+        }
+
+        // SVD(U_1,eps,&U1,&S1,&V1);
+        pfullmatrix U1, S1, V1;
+        SVD_truncated(U_1, eps, &U1, &S1, &V1);
+
+        // diag(V11,V12)
+        pfullmatrix V_1 = new_zero_fullmatrix(V11->rows + V12->rows, V11->cols + V12->cols);
+
+        for (int j = 0; j < V11->cols; j++)
+        {
+            for (int i = 0; i < V11->rows; i++)
+            {
+                V_1->e[j * V_1->rows + i] = V11->e[j * V11->rows + i];
+            }
+        }
+        for (int j = 0; j < V12->cols; j++)
+        {
+            for (int i = 0; i < V12->rows; i++)
+            {
+                V_1->e[(j + V11->cols) * V_1->rows + (i + V11->rows)] = V12->e[j * V12->rows + i];
+            }
+        }
+        // pfullmatrix V1 =V1*V_1;
+        pfullmatrix V1_temp = new_fullmatrix(V1->rows, V_1->cols);
+        mul_fullmatrix(V1, V_1, V1_temp);
+        // U_2=[U21*S21, U22*S22]
+        pfullmatrix U_21 = new_fullmatrix(U21->rows, S21->cols);
+        pfullmatrix U_22 = new_fullmatrix(U22->rows, S22->cols);
+        mul_fullmatrix(U21, S21, U_21);
+        mul_fullmatrix(U22, S22, U_22);
+        if (U_21->rows != U_22->rows)
+        {
+            printf("Error: U_21 and U_22 have different number of rows\n");
+            return;
+        }
+        pfullmatrix U_2 = new_fullmatrix(U_21->rows, U_21->cols + U_22->cols);
+        for (int j = 0; j < U_21->cols; j++)
+        {
+            for (int i = 0; i < U_21->rows; i++)
+            {
+                U_2->e[j * U_2->rows + i] = U_21->e[j * U_21->rows + i];
+            }
+        }
+        for (int j = 0; j < U_22->cols; j++)
+        {
+            for (int i = 0; i < U_22->rows; i++)
+            {
+                U_2->e[(j + U_21->cols) * U_2->rows + i] = U_22->e[j * U_22->rows + i];
+            }
+        }
+        // SVD(U_2,eps,&U2,&S2,&V2);
+
+        pfullmatrix U2, S2, V2;
+        SVD_truncated(U_2, eps, &U2, &S2, &V2);
+
+        // diag(V21,V22)
+        pfullmatrix V_2 = new_zero_fullmatrix(V21->rows + V22->rows, V21->cols + V22->cols);
+        for (int j = 0; j < V21->cols; j++)
+        {
+            for (int i = 0; i < V21->rows; i++)
+            {
+                V_2->e[j * V_2->rows + i] = V21->e[j * V21->rows + i];
+            }
+        }
+        for (int j = 0; j < V22->cols; j++)
+        {
+            for (int i = 0; i < V22->rows; i++)
+            {
+                V_2->e[(j + V21->cols) * V_2->rows + (i + V21->rows)] = V22->e[j * V22->rows + i];
+            }
+        }
+        // TODO: pfullmatrix V2 =V2*V_2;
+        pfullmatrix V2_temp = new_fullmatrix(V2->rows, V_2->cols);
+        mul_fullmatrix(V2, V_2, V2_temp);
+
+        /* --------------------------------------------------------------------*/
+        /*                       after for loop                                */
+        /* --------------------------------------------------------------------*/
+
+        // U_ =diag(U1,U2);
+        pfullmatrix U_ = new_zero_fullmatrix(U1->rows + U2->rows, U1->cols + U2->cols);
+        for (int j = 0; j < U1->cols; j++)
+        {
+            for (int i = 0; i < U1->rows; i++)
+            {
+                U_->e[j * U_->rows + i] = U1->e[j * U1->rows + i];
+            }
+        }
+        for (int j = 0; j < U2->cols; j++)
+        {
+            for (int i = 0; i < U2->rows; i++)
+            {
+                U_->e[(j + U1->cols) * U_->rows + (i + U1->rows)] = U2->e[j * U2->rows + i];
+            }
+        }
+
+        // V_=[S1*V1; S2*V2]
+
+        pfullmatrix S1V1 = new_fullmatrix(S1->rows, V1_temp->cols);
+
+        mul_fullmatrix(S1, V1_temp, S1V1);
+        pfullmatrix S2V2 = new_fullmatrix(S2->rows, V2_temp->cols);
+
+        mul_fullmatrix(S2, V2_temp, S2V2);
+
+        pfullmatrix V_ = new_zero_fullmatrix(S1V1->rows + S2V2->rows, S1V1->cols);
+        for (int j = 0; j < S1V1->cols; j++)
+        {
+            for (int i = 0; i < S1V1->rows; i++)
+            {
+                V_->e[j * V_->rows + i] =
+                    S1V1->e[j * S1V1->rows + i];
+            }
+        }
+
+        for (int j = 0; j < S2V2->cols; j++)
+        {
+            for (int i = 0; i < S2V2->rows; i++)
+            {
+                V_->e[j * V_->rows +
+                      (i + S1V1->rows)] =
+                    S2V2->e[j * S2V2->rows + i];
+            }
+        }
+        // SVD(V_,eps,&U,&S,&V);
+        pfullmatrix Uloc;
+        pfullmatrix Sloc;
+        pfullmatrix Vloc;
+        SVD_truncated(V_, eps, &Uloc, &Sloc, &Vloc);
+        *U = Uloc;
+        *S = Sloc;
+        *V = Vloc;
+        (*r) = (*S)->rows;
+
+        // *U=U*U_;
+
+        pfullmatrix U_temp = new_fullmatrix((*U)->rows, U_->cols);
+
+        mul_fullmatrix(U_, Uloc, U_temp);
+
+        *U = U_temp;
+        return;
+    }
 }

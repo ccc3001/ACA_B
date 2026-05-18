@@ -18,7 +18,8 @@ OBJECTS = \
 	cluster.o \
 	new_aca.o \
 	aca_b.o \
-	kernel_functions.o
+	kernel_functions.o \
+	svd.o
 
 
 CC = gcc
