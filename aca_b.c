@@ -11,6 +11,7 @@
 #include "new_aca.h"
 #include "aca.h"
 #include "svd.h"
+#include <omp.h>
 
 // #include "blas.h"
 
@@ -518,11 +519,12 @@ double LRnormUp(prkmatrix R,
 }
 
 prkmatrix
-b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A)
+b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A, double **residuals)
 {
     int rows = A->rows;
     int cols = A->cols;
     int k_max = min(rows, cols);
+    *residuals = allocate_doubles(k_max);
 
     int i, j;
 
@@ -559,9 +561,10 @@ b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A)
     /* =================================
        ACA iteration
        ================================= */
-
+    int iter = 0;
     do
     {
+        iter += 1;
         pfullmatrix C = NULL;
         pfullmatrix C_T = NULL;
         pfullmatrix R = NULL;
@@ -772,7 +775,7 @@ b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A)
 
         free(piv_rows);
         free(J_bar);
-
+        (*residuals)[iter] = u;
     } while (v >= eps * u &&
              (r->kt + d) < k_max);
 
@@ -789,8 +792,9 @@ void h_b_aca_rkmatrix_new(double eps, int d, int L, pcfullmatrix A, pfullmatrix 
 
     if (L == 0)
     {
-
-        prkmatrix r_ = b_aca_rkmatrix_new(eps, d, A);
+        double *residuals;
+        prkmatrix r_ = b_aca_rkmatrix_new(eps, d, A, &residuals);
+        free(residuals);
         *U = new_fullmatrix(rows, r_->kt);
         pfullmatrix V_ = new_fullmatrix(cols, r_->kt);
         memcpy((*U)->e, r_->a, rows * r_->kt * sizeof(double));
@@ -818,11 +822,25 @@ void h_b_aca_rkmatrix_new(double eps, int d, int L, pcfullmatrix A, pfullmatrix 
         pfullmatrix U21, S21, V21;
         pfullmatrix U22, S22, V22;
         int r11, r12, r21, r22;
-        h_b_aca_rkmatrix_new(eps, d, L - 1, A11, &U11, &S11, &V11, &r11);
-        h_b_aca_rkmatrix_new(eps, d, L - 1, A12, &U12, &S12, &V12, &r12);
-        h_b_aca_rkmatrix_new(eps, d, L - 1, A21, &U21, &S21, &V21, &r21);
-        h_b_aca_rkmatrix_new(eps, d, L - 1, A22, &U22, &S22, &V22, &r22);
-
+#pragma omp parallel sections num_threads(4)
+        {
+#pragma omp section
+            {
+                h_b_aca_rkmatrix_new(eps, d, L - 1, A11, &U11, &S11, &V11, &r11);
+            }
+#pragma omp section
+            {
+                h_b_aca_rkmatrix_new(eps, d, L - 1, A12, &U12, &S12, &V12, &r12);
+            }
+#pragma omp section
+            {
+                h_b_aca_rkmatrix_new(eps, d, L - 1, A21, &U21, &S21, &V21, &r21);
+            }
+#pragma omp section
+            {
+                h_b_aca_rkmatrix_new(eps, d, L - 1, A22, &U22, &S22, &V22, &r22);
+            }
+        }
         // U_1=[U11*S11, U12*S12]
         pfullmatrix U_11 = new_fullmatrix(U11->rows, S11->cols);
         pfullmatrix U_12 = new_fullmatrix(U12->rows, S12->cols);

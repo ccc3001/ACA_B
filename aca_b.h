@@ -26,6 +26,6 @@ LRnormUp(prkmatrix R, pfullmatrix U_bar, pfullmatrix V_bar,
          double nu, double nu_bar);
 
 prkmatrix
-b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A);
+b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A, double **residuals);
 
 void h_b_aca_rkmatrix_new(double eps, int d, int L, pcfullmatrix A, pfullmatrix *U, pfullmatrix *S, pfullmatrix *V, int *r);

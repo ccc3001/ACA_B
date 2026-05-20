@@ -11,21 +11,33 @@
 #include <omp.h>
 #include <math.h>
 #include <stdbool.h>
+#include <time.h>
 
 int main()
 {
-    bool sanity_check = true;
-    bool runtime_benchmark = false;
-    bool baca_residual_benchmark = false;
-    bool h_baca_benchmark = false; // TODO: implement h_baca benchmark
-    bool svd_benchmark = false;    // TODO: implement svd benchmark
-    /* benchmark settings */
-    int iter = 50;
-    int repeats = 5;
-
     /* BACA block sizes */
     int d[] = {2, 4, 8, 16, 32};
     int size_d = sizeof(d) / sizeof(d[0]);
+
+    /*H_BACA depth L*/
+    int L[] = {4, 5};
+    int size_L = sizeof(L) / sizeof(L[0]);
+
+    bool sanity_check = false;
+    bool runtime_benchmark = true;
+    /* runtime benchmark settings */
+    int iter = 20;
+    int repeats = 4;
+
+    /* residual benchmark settings */
+    int n_residual = 1000;
+    double h_residual = 1.0;
+    double eps_residual = 0.00001;
+
+    bool baca_residual_benchmark = false;
+
+    bool h_baca_benchmark = false; // TODO: implement h_baca benchmark
+    bool svd_benchmark = false;    // TODO: implement svd benchmark
 
     if (sanity_check)
     {
@@ -35,13 +47,15 @@ int main()
         pfullmatrix A_ = gaussian_kernel_matrix(10, 10, 40, 0, 1.0);
         printf("Original matrix A:\n");
         print_fullmatrix(A_);
+        double *residuals;
         prkmatrix RK_ACA = aca_rkmatrix_new(0.00000000000000000001, A_);
         printf("ACA rank: %d\n", RK_ACA->kt);
         pfullmatrix ACA_approx = new_zero_fullmatrix(A_->rows, A_->cols);
         convertrk2_fullmatrix(RK_ACA, ACA_approx);
         printf("ACA approximation:\n");
         print_fullmatrix(ACA_approx);
-        prkmatrix RK_BACA = b_aca_rkmatrix_new(0.00000000000000000001, 2, A_);
+        prkmatrix RK_BACA = b_aca_rkmatrix_new(0.00000000000000000001, 2, A_, &residuals);
+        free(residuals);
         printf("BACA rank: %d\n", RK_BACA->kt);
         pfullmatrix BACA_approx = new_zero_fullmatrix(A_->rows, A_->cols);
         convertrk2_fullmatrix(RK_BACA, BACA_approx);
@@ -133,7 +147,6 @@ int main()
 
     if (runtime_benchmark)
     {
-
         printf("=====================================\n");
         printf(" ACA / BACA Benchmark\n");
         printf("=====================================\n");
@@ -151,9 +164,18 @@ int main()
             return 1;
         }
 
-        /* CSV headers */
-        fprintf(fbaca, "n,d,elapsed,rank\n");
-        fprintf(faca, "n,elapsed,rank\n");
+        /*
+        Save EVERY repeat individually.
+        This is MUCH better statistically.
+        */
+
+        fprintf(
+            fbaca,
+            "n,d,repeat,elapsed,rank,T_over_rank,T_over_nk,T_over_nk2\n");
+
+        fprintf(
+            faca,
+            "n,repeat,elapsed,rank,T_over_rank,T_over_nk,T_over_nk2\n");
 
         /* ===================================== */
         /* MAIN BENCHMARK LOOP                   */
@@ -167,6 +189,21 @@ int main()
             printf("Matrix size: %d x %d\n", n, n);
             printf("=====================================\n");
 
+            /*
+            IMPORTANT:
+            Generate ONE matrix per n.
+            This isolates algorithmic randomness
+            from matrix randomness.
+            */
+
+            pfullmatrix A =
+                gaussian_kernel_matrix(
+                    n,
+                    n,
+                    16 * n,
+                    0,
+                    1.0);
+
             /* ================================= */
             /* BACA                              */
             /* ================================= */
@@ -174,10 +211,188 @@ int main()
             for (int j = 0; j < size_d; j++)
             {
                 double total_time = 0.0;
-                int final_rank = 0;
+                double total_rank = 0.0;
+
+                double total_T_over_rank = 0.0;
+                double total_T_over_nk = 0.0;
+                double total_T_over_nk2 = 0.0;
 
                 printf("\n-------------------------------------\n");
                 printf("Running BACA with d = %d\n", d[j]);
+
+                /*
+                 * Parallel repeats
+                 */
+
+#pragma omp parallel for reduction(+ : total_time, total_rank, total_T_over_rank, total_T_over_nk, total_T_over_nk2)
+                for (int r = 0; r < repeats; r++)
+                {
+                    /*
+                     * Per-thread deterministic seed
+                     */
+
+                    unsigned int seed =
+                        12345u + 1000u * omp_get_thread_num() + (unsigned int)r;
+
+                    /*
+                     * Seed RNG for this thread/run
+                     */
+
+                    srand(seed);
+
+#pragma omp critical
+                    {
+                        printf("repeat %d / %d\n",
+                               r + 1,
+                               repeats);
+                    }
+
+                    double start =
+                        omp_get_wtime();
+                    double *residuals;
+                    prkmatrix RK_BACA =
+                        b_aca_rkmatrix_new(
+                            0.01,
+                            d[j],
+                            A, &residuals);
+                    free(residuals);
+
+                    double end =
+                        omp_get_wtime();
+
+                    double elapsed =
+                        end - start;
+
+                    int rank =
+                        RK_BACA->kt;
+
+                    double T_over_rank = 0.0;
+                    double T_over_nk = 0.0;
+                    double T_over_nk2 = 0.0;
+
+                    if (rank > 0)
+                    {
+                        T_over_rank =
+                            elapsed / rank;
+
+                        T_over_nk =
+                            elapsed /
+                            (n * rank);
+
+                        T_over_nk2 =
+                            elapsed /
+                            (n * rank * rank);
+                    }
+
+                    /*
+                     * Reduction variables
+                     */
+
+                    total_time += elapsed;
+                    total_rank += rank;
+
+                    total_T_over_rank += T_over_rank;
+                    total_T_over_nk += T_over_nk;
+                    total_T_over_nk2 += T_over_nk2;
+
+                    /*
+                     * Console output
+                     */
+
+#pragma omp critical
+                    {
+                        printf("time : %.6f s\n",
+                               elapsed);
+
+                        printf("rank : %d\n",
+                               rank);
+
+                        printf("T/rank   : %.6e\n",
+                               T_over_rank);
+
+                        printf("T/(n*k)  : %.6e\n",
+                               T_over_nk);
+
+                        printf("T/(n*k²) : %.6e\n",
+                               T_over_nk2);
+                    }
+
+                    /*
+                     * Save EVERY run individually
+                     */
+
+#pragma omp critical
+                    {
+                        fprintf(
+                            fbaca,
+                            "%d,%d,%d,%.12f,%d,%.12e,%.12e,%.12e\n",
+                            n,
+                            d[j],
+                            r,
+                            elapsed,
+                            rank,
+                            T_over_rank,
+                            T_over_nk,
+                            T_over_nk2);
+                    }
+
+                    del_rkmatrix(RK_BACA);
+                }
+
+                /*
+                 * Aggregate statistics
+                 */
+
+                double avg_time =
+                    total_time / repeats;
+
+                double avg_rank =
+                    total_rank / repeats;
+
+                double avg_T_over_rank =
+                    total_T_over_rank / repeats;
+
+                double avg_T_over_nk =
+                    total_T_over_nk / repeats;
+
+                double avg_T_over_nk2 =
+                    total_T_over_nk2 / repeats;
+
+                printf("\nAverage BACA Results\n");
+
+                printf("n            : %d\n", n);
+                printf("d            : %d\n", d[j]);
+
+                printf("avg time     : %.6f s\n",
+                       avg_time);
+
+                printf("avg rank     : %.6f\n",
+                       avg_rank);
+
+                printf("avg T/rank   : %.6e\n",
+                       avg_T_over_rank);
+
+                printf("avg T/(n*k)  : %.6e\n",
+                       avg_T_over_nk);
+
+                printf("avg T/(n*k²) : %.6e\n",
+                       avg_T_over_nk2);
+            }
+
+            /* ================================= */
+            /* ACA                               */
+            /* ================================= */
+
+            {
+                double total_time = 0.0;
+                double total_rank = 0.0;
+
+                double total_T_over_rank = 0.0;
+                double total_T_over_nk = 0.0;
+                double total_T_over_nk2 = 0.0;
+
+                printf("\n-------------------------------------\n");
+                printf("Running ACA\n");
 
                 for (int r = 0; r < repeats; r++)
                 {
@@ -185,22 +400,12 @@ int main()
                            r + 1,
                            repeats);
 
-                    /* fresh matrix */
-                    pfullmatrix A =
-                        gaussian_kernel_matrix(
-                            n,
-                            n,
-                            16 * n,
-                            0,
-                            1.0);
-
                     double start =
                         omp_get_wtime();
 
-                    prkmatrix RK_BACA =
-                        b_aca_rkmatrix_new(
+                    prkmatrix RK_ACA =
+                        aca_rkmatrix_new(
                             0.01,
-                            d[j],
                             A);
 
                     double end =
@@ -209,143 +414,111 @@ int main()
                     double elapsed =
                         end - start;
 
-                    total_time += elapsed;
+                    int rank =
+                        RK_ACA->kt;
 
-                    final_rank =
-                        RK_BACA->kt;
+                    double T_over_rank = 0.0;
+                    double T_over_nk = 0.0;
+                    double T_over_nk2 = 0.0;
+
+                    if (rank > 0)
+                    {
+                        T_over_rank =
+                            elapsed / rank;
+
+                        T_over_nk =
+                            elapsed /
+                            (n * rank);
+
+                        T_over_nk2 =
+                            elapsed /
+                            (n * rank * rank);
+                    }
+
+                    total_time += elapsed;
+                    total_rank += rank;
+
+                    total_T_over_rank += T_over_rank;
+                    total_T_over_nk += T_over_nk;
+                    total_T_over_nk2 += T_over_nk2;
 
                     printf("time : %.6f s\n",
                            elapsed);
 
                     printf("rank : %d\n",
-                           final_rank);
+                           rank);
 
-                    del_rkmatrix(RK_BACA);
-                    del_fullmatrix(A);
+                    printf("T/rank   : %.6e\n",
+                           T_over_rank);
+
+                    printf("T/(n*k)  : %.6e\n",
+                           T_over_nk);
+
+                    printf("T/(n*k²) : %.6e\n",
+                           T_over_nk2);
+
+                    /*
+                    Save EVERY run individually
+                    */
+
+                    fprintf(
+                        faca,
+                        "%d,%d,%.12f,%d,%.12e,%.12e,%.12e\n",
+                        n,
+                        r,
+                        elapsed,
+                        rank,
+                        T_over_rank,
+                        T_over_nk,
+                        T_over_nk2);
+
+                    del_rkmatrix(RK_ACA);
                 }
+
+                /*
+                Aggregate statistics
+                */
 
                 double avg_time =
                     total_time / repeats;
 
-                printf("\nAverage BACA Results\n");
-                printf("n        : %d\n", n);
-                printf("d        : %d\n", d[j]);
-                printf("avg time : %.6f s\n", avg_time);
-                printf("rank     : %d\n", final_rank);
+                double avg_rank =
+                    total_rank / repeats;
 
-                if (final_rank > 0)
-                {
-                    printf("T/rank    : %.6e\n",
-                           avg_time / final_rank);
+                double avg_T_over_rank =
+                    total_T_over_rank / repeats;
 
-                    printf("T/(n*k)   : %.6e\n",
-                           avg_time / (n * final_rank));
+                double avg_T_over_nk =
+                    total_T_over_nk / repeats;
 
-                    printf("T/(n*k²)  : %.6e\n",
-                           avg_time /
-                               (n *
-                                final_rank *
-                                final_rank));
-                }
+                double avg_T_over_nk2 =
+                    total_T_over_nk2 / repeats;
 
-                /* save CSV row */
-                fprintf(
-                    fbaca,
-                    "%d,%d,%.12f,%d\n",
-                    n,
-                    d[j],
-                    avg_time,
-                    final_rank);
+                printf("\nAverage ACA Results\n");
+
+                printf("n            : %d\n", n);
+
+                printf("avg time     : %.6f s\n",
+                       avg_time);
+
+                printf("avg rank     : %.6f\n",
+                       avg_rank);
+
+                printf("avg T/rank   : %.6e\n",
+                       avg_T_over_rank);
+
+                printf("avg T/(n*k)  : %.6e\n",
+                       avg_T_over_nk);
+
+                printf("avg T/(n*k²) : %.6e\n",
+                       avg_T_over_nk2);
             }
 
-            /* ================================= */
-            /* ACA                               */
-            /* ================================= */
+            /*
+            cleanup matrix
+            */
 
-            double total_time_ACA = 0.0;
-            int final_rank_ACA = 0;
-
-            printf("\n-------------------------------------\n");
-            printf("Running ACA\n");
-
-            for (int r = 0; r < repeats; r++)
-            {
-                printf("repeat %d / %d\n",
-                       r + 1,
-                       repeats);
-
-                pfullmatrix A =
-                    gaussian_kernel_matrix(
-                        n,
-                        n,
-                        16 * n,
-                        0,
-                        1.0);
-
-                double start =
-                    omp_get_wtime();
-
-                prkmatrix RK_ACA =
-                    aca_rkmatrix_new(
-                        0.01,
-                        A);
-
-                double end =
-                    omp_get_wtime();
-
-                double elapsed =
-                    end - start;
-
-                total_time_ACA += elapsed;
-
-                final_rank_ACA =
-                    RK_ACA->kt;
-
-                printf("time : %.6f s\n",
-                       elapsed);
-
-                printf("rank : %d\n",
-                       final_rank_ACA);
-
-                del_rkmatrix(RK_ACA);
-                del_fullmatrix(A);
-            }
-
-            double avg_time_ACA =
-                total_time_ACA / repeats;
-
-            printf("\nAverage ACA Results\n");
-            printf("n        : %d\n", n);
-            printf("avg time : %.6f s\n",
-                   avg_time_ACA);
-
-            printf("rank     : %d\n",
-                   final_rank_ACA);
-
-            if (final_rank_ACA > 0)
-            {
-                printf("T/rank    : %.6e\n",
-                       avg_time_ACA /
-                           final_rank_ACA);
-
-                printf("T/(n*k)   : %.6e\n",
-                       avg_time_ACA /
-                           (n * final_rank_ACA));
-
-                printf("T/(n*k²)  : %.6e\n",
-                       avg_time_ACA /
-                           (n *
-                            final_rank_ACA *
-                            final_rank_ACA));
-            }
-
-            /* save CSV row */
-            fprintf(
-                faca,
-                "%d,%.12f,%d\n",
-                n,
-                avg_time_ACA,
-                final_rank_ACA);
+            del_fullmatrix(A);
         }
 
         /* ===================================== */
@@ -363,91 +536,443 @@ int main()
         printf("=====================================\n");
     }
 
+    pfullmatrix A =
+        gaussian_kernel_matrix(
+            n_residual,
+            n_residual,
+            2 * n_residual,
+            0,
+            h_residual);
+
     if (baca_residual_benchmark)
     {
         printf("=====================================\n");
         printf(" BACA Frobenius Norm over time\n");
         printf("=====================================\n");
+
         FILE *frob = fopen("frobenius_norms.csv", "w");
+
+        if (!frob)
+        {
+            printf("ERROR: could not open output file.\n");
+            return 1;
+        }
+
+        fprintf(frob, "method,d,start,rank,frobenius_norm\n");
+
+        /*
+         * Number of random restarts
+         */
+        int n_starts = 10;
+
+        /*
+         * ============================================================
+         * ACA MULTI-START BENCHMARK
+         * ============================================================
+         */
+
+        printf("\n=====================================\n");
+        printf(" ACA MULTI-START BENCHMARK\n");
+        printf("=====================================\n");
+
+        double best_aca_final_norm = HUGE_VAL;
+
+        double *best_aca_frob_norms = NULL;
+
+        int best_aca_rank = 0;
+        int best_aca_start = -1;
+
+        for (int start = 0; start < n_starts; start++)
+        {
+            printf(
+                "\nACA random start %d / %d\n",
+                start + 1,
+                n_starts);
+
+            /*
+             * Seed RNG for different starts
+             */
+            srand(time(NULL) + start);
+
+            prkmatrix RK_ACA =
+                aca_rkmatrix_new(
+                    eps_residual,
+                    A);
+
+            int kt_aca = RK_ACA->kt;
+
+            printf(
+                "ACA produced rank %d\n",
+                kt_aca);
+
+            double *current_frob_norms =
+                malloc(kt_aca * sizeof(double));
+
+            if (!current_frob_norms)
+            {
+                printf("ERROR: malloc failed.\n");
+
+                del_rkmatrix(RK_ACA);
+                fclose(frob);
+
+                return 1;
+            }
+
+            RK_ACA->kt = 0;
+
+            for (int i = 1; i <= kt_aca; i++)
+            {
+                RK_ACA->kt = i;
+
+                pfullmatrix F =
+                    new_zero_fullmatrix(
+                        A->rows,
+                        A->cols);
+
+                convertrk2_fullmatrix(
+                    RK_ACA,
+                    F);
+
+                double frob_norm = 0.0;
+
+                for (int k = 0; k < A->rows * A->cols; k++)
+                {
+                    double diff =
+                        A->e[k] - F->e[k];
+
+                    frob_norm += diff * diff;
+                }
+
+                frob_norm = sqrt(frob_norm);
+
+                current_frob_norms[i - 1] =
+                    frob_norm;
+
+                printf(
+                    "ACA rank %d: Frobenius norm = %.6e\n",
+                    i,
+                    frob_norm);
+
+                del_fullmatrix(F);
+            }
+
+            double final_norm =
+                current_frob_norms[kt_aca - 1];
+
+            printf(
+                "ACA final norm for start %d = %.6e\n",
+                start + 1,
+                final_norm);
+
+            /*
+             * Keep best ACA run
+             */
+            if (final_norm < best_aca_final_norm)
+            {
+                best_aca_final_norm = final_norm;
+
+                best_aca_rank = kt_aca;
+
+                best_aca_start = start + 1;
+
+                if (best_aca_frob_norms)
+                {
+                    free(best_aca_frob_norms);
+                }
+
+                best_aca_frob_norms =
+                    malloc(kt_aca * sizeof(double));
+
+                for (int i = 0; i < kt_aca; i++)
+                {
+                    best_aca_frob_norms[i] =
+                        current_frob_norms[i];
+                }
+
+                printf(
+                    "--> New best ACA run found.\n");
+            }
+
+            free(current_frob_norms);
+
+            del_rkmatrix(RK_ACA);
+        }
+
+        /*
+         * Write best ACA trajectory
+         */
+        printf(
+            "\nBest ACA run: start %d, final norm %.6e\n",
+            best_aca_start,
+            best_aca_final_norm);
+
+        for (int i = 0; i < best_aca_rank; i++)
+        {
+            fprintf(
+                frob,
+                "ACA,%d,%d,%d,%.6e\n",
+                1,
+                best_aca_start,
+                i + 1,
+                best_aca_frob_norms[i]);
+        }
+
+        free(best_aca_frob_norms);
+
+        /*
+         * ============================================================
+         * BACA MULTI-START BENCHMARK
+         * ============================================================
+         */
+
+        printf("\n=====================================\n");
+        printf(" BACA MULTI-START BENCHMARK\n");
+        printf("=====================================\n");
+
+        for (int j = 0; j < size_d; j++)
+        {
+            printf(
+                "\nStarting calculation for d = %d\n",
+                d[j]);
+
+            double best_baca_final_norm = HUGE_VAL;
+
+            double *best_baca_frob_norms = NULL;
+
+            int best_baca_rank = 0;
+
+            int best_baca_start = -1;
+
+            for (int start = 0; start < n_starts; start++)
+            {
+                printf(
+                    "\nBACA random start %d / %d\n",
+                    start + 1,
+                    n_starts);
+
+                /*
+                 * Seed RNG differently each run
+                 */
+                srand(time(NULL) + start);
+                double *residuals;
+                prkmatrix RK_BACA =
+                    b_aca_rkmatrix_new(
+                        eps_residual,
+                        d[j],
+                        A, &residuals);
+                free(residuals);
+                int kt_baca = RK_BACA->kt;
+
+                printf(
+                    "BACA produced rank %d\n",
+                    kt_baca);
+
+                double *current_frob_norms =
+                    malloc(kt_baca * sizeof(double));
+
+                if (!current_frob_norms)
+                {
+                    printf("ERROR: malloc failed.\n");
+
+                    del_rkmatrix(RK_BACA);
+
+                    if (best_baca_frob_norms)
+                    {
+                        free(best_baca_frob_norms);
+                    }
+
+                    fclose(frob);
+
+                    return 1;
+                }
+
+                RK_BACA->kt = 0;
+
+                for (int i = 1; i <= kt_baca; i++)
+                {
+                    RK_BACA->kt = i;
+
+                    pfullmatrix F =
+                        new_zero_fullmatrix(
+                            A->rows,
+                            A->cols);
+
+                    convertrk2_fullmatrix(
+                        RK_BACA,
+                        F);
+
+                    double frob_norm = 0.0;
+
+                    for (int k = 0; k < A->rows * A->cols; k++)
+                    {
+                        double diff =
+                            A->e[k] - F->e[k];
+
+                        frob_norm += diff * diff;
+                    }
+
+                    frob_norm = sqrt(frob_norm);
+
+                    current_frob_norms[i - 1] =
+                        frob_norm;
+
+                    printf(
+                        "BACA rank %d: Frobenius norm = %.6e\n",
+                        i,
+                        frob_norm);
+
+                    del_fullmatrix(F);
+                }
+
+                double final_norm =
+                    current_frob_norms[kt_baca - 1];
+
+                printf(
+                    "BACA final norm for start %d = %.6e\n",
+                    start + 1,
+                    final_norm);
+
+                /*
+                 * Keep best BACA run
+                 */
+                if (final_norm < best_baca_final_norm)
+                {
+                    best_baca_final_norm = final_norm;
+
+                    best_baca_rank = kt_baca;
+
+                    best_baca_start = start + 1;
+
+                    if (best_baca_frob_norms)
+                    {
+                        free(best_baca_frob_norms);
+                    }
+
+                    best_baca_frob_norms =
+                        malloc(kt_baca * sizeof(double));
+
+                    for (int i = 0; i < kt_baca; i++)
+                    {
+                        best_baca_frob_norms[i] =
+                            current_frob_norms[i];
+                    }
+
+                    printf(
+                        "--> New best BACA run found.\n");
+                }
+
+                free(current_frob_norms);
+
+                del_rkmatrix(RK_BACA);
+            }
+
+            /*
+             * Write best BACA trajectory
+             */
+            printf(
+                "\nBest BACA run for d = %d:\n",
+                d[j]);
+
+            printf(
+                "Best start = %d\n",
+                best_baca_start);
+
+            printf(
+                "Best final Frobenius norm = %.6e\n",
+                best_baca_final_norm);
+
+            for (int i = 0; i < best_baca_rank; i++)
+            {
+                fprintf(
+                    frob,
+                    "BACA,%d,%d,%d,%.6e\n",
+                    d[j],
+                    best_baca_start,
+                    i + 1,
+                    best_baca_frob_norms[i]);
+            }
+
+            free(best_baca_frob_norms);
+        }
+
+        fclose(frob);
+    }
+    if (svd_benchmark)
+    {
+        FILE *frob = fopen("frobenius_norms_svd.csv", "w");
+
         if (!frob)
         {
             printf("ERROR: could not open output files.\n");
             return 1;
         }
-        fprintf(frob, "d,rank,frobenius_norm\n");
-        pfullmatrix A =
-            gaussian_kernel_matrix(
-                5000,
-                5000,
-                2 * 5000,
-                0,
-                1.0);
 
-        prkmatrix RK_ACA = aca_rkmatrix_new(
-            0.001,
-            A);
+        fprintf(frob, "rank,frobenius_norm\n");
 
-        int kt = RK_ACA->kt;
-        double *frob_norms = malloc(kt * sizeof(double));
-        RK_ACA->kt = 0;
-        for (int i = 1; i <= kt; i++)
+        pfullmatrix U, V_T, S;
+
+        SVD(A, &U, &S, &V_T);
+
+        int r = S->rows;
+
+        /* -----------------------------------------
+        Total squared Frobenius norm
+        ----------------------------------------- */
+
+        double tail_sum = 0.0;
+
+        for (int i = 0; i < r; i++)
         {
-            RK_ACA->kt = i;
-            pfullmatrix F = new_zero_fullmatrix(A->rows, A->cols);
-            convertrk2_fullmatrix(RK_ACA, F);
-            double frob_norm = 0.0;
-            for (int k = 0; k < A->rows * A->cols; k++)
-            {
-                double diff = A->e[k] - F->e[k];
-                frob_norm += sqrt(diff * diff);
-            }
-            printf("ACA rank %d: Frobenius norm of (A - R) = %.6e\n", i, frob_norm);
-            frob_norms[i - 1] = frob_norm;
-            del_fullmatrix(F);
-        }
-        for (int i = 0; i < kt; i++)
-        {
-            fprintf(frob, "%d,%d,%.6e\n", 1, i + 1, frob_norms[i]);
+            double sigma = get_fullmatrix_value(S, i, i);
+
+            tail_sum += sigma * sigma;
         }
 
+        /* -----------------------------------------
+        Rank-k truncation errors
+        ----------------------------------------- */
+
+        for (int k = 0; k < r; k++)
+        {
+            double sigma = get_fullmatrix_value(S, k, k);
+
+            tail_sum -= sigma * sigma;
+
+            double frob_norm = sqrt(fmax(tail_sum, 0.0));
+
+            printf(
+                "SVD rank %d: Frobenius norm of (A - A_k) = %.6e\n",
+                k + 1,
+                frob_norm);
+
+            fprintf(
+                frob,
+                "%d,%.6e\n",
+                k + 1,
+                frob_norm);
+        }
+
+        fclose(frob);
+
+        del_fullmatrix(U);
+        del_fullmatrix(S);
+        del_fullmatrix(V_T);
+    }
+    if (h_baca_benchmark)
+    {
         for (int j = 0; j < size_d; j++)
         {
-
-            prkmatrix RK_BACA = b_aca_rkmatrix_new(
-                0.001,
-                d[j],
-                A);
-
-            printf("d = %d, rank = %d\n", d[j], RK_BACA->kt);
-            int kt = RK_BACA->kt;
-            double *frob_norms = malloc(kt * sizeof(double));
-            RK_BACA->kt = 0;
-            for (int i = 1; i <= kt; i++)
+            for (int i = 0; i < size_L; i++)
             {
-                RK_BACA->kt = i;
-                pfullmatrix F = new_zero_fullmatrix(A->rows, A->cols);
-                convertrk2_fullmatrix(RK_BACA, F);
-                double frob_norm = 0.0;
-                for (int k = 0; k < A->rows * A->cols; k++)
-                {
-                    double diff = A->e[k] - F->e[k];
-                    frob_norm += sqrt(diff * diff);
-                }
-                printf("rank %d: Frobenius norm of (A - R) = %.6e\n", i, frob_norm);
-                frob_norms[i - 1] = frob_norm;
-                del_fullmatrix(F);
-                del_rkmatrix(RK_BACA);
-            }
-            for (int i = 0; i < kt; i++)
-            {
-                fprintf(frob, "%d,%d,%.6e\n", d[j], i + 1, frob_norms[i]);
+                pfullmatrix U, V, S;
+                int r;
+                h_b_aca_rkmatrix_new(eps_residual, d[j], L[i], A, &U, &S, &V, &r);
             }
         }
-        fclose(frob);
-        del_doubles(frob_norms);
-        del_fullmatrix(A);
-        del_rkmatrix(RK_ACA);
+
+        printf("work in progress");
     }
+    del_fullmatrix(A);
 
     return 0;
 }
