@@ -2,6 +2,7 @@
 #include "basic.h"
 #include "blas.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <assert.h>
 
@@ -359,4 +360,31 @@ new_submatrix(pcfullmatrix f, int row_start, int col_start, int rows, int cols)
   }
 
   return s;
+}
+
+pfullmatrix
+build_fullmatrix_gaussian(int d, int rows, int cols, const double *nodes_x, const double *nodes_y)
+{
+  pfullmatrix A = new_fullmatrix(rows, cols);
+
+  for (int i = 0; i < rows; i++)
+  {
+    for (int j = 0; j < cols; j++)
+    {
+
+      double r2 = 0.0;
+
+      for (int l = 0; l < d; l++)
+      {
+        double dx =
+            nodes_x[l * rows + i] - nodes_y[l * cols + j];
+
+        r2 += dx * dx;
+      }
+
+      A->e[i * cols + j] = exp(-r2);
+    }
+  }
+
+  return A;
 }

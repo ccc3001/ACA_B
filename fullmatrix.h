@@ -62,4 +62,7 @@ transpose_fullmatrix(pcfullmatrix f);
 
 pfullmatrix
 new_submatrix(pcfullmatrix f, int row_start, int col_start, int rows, int cols);
+
+pfullmatrix
+build_fullmatrix_gaussian(int d, int rows, int cols, const double *nodes_x, const double *nodes_y);
 #endif

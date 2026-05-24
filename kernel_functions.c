@@ -132,6 +132,9 @@ void print_matrix_difference(pcfullmatrix A, pcfullmatrix B)
 
             double diff = a - b;
 
+            if (fabs(diff) < 1e-10)
+                diff = 0.0;
+
             printf("% .6e ", diff);
         }
         printf("\n");

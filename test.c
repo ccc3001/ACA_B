@@ -1,10 +1,12 @@
 #include "new_aca.h"
+#include "aca.h"
 #include "aca_b.h"
 #include "fullmatrix.h"
 #include "rkmatrix.h"
 #include "basic.h"
 #include "kernel_functions.h"
 #include "svd.h"
+#include "interpolation.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,8 +25,8 @@ int main()
     int L[] = {4, 5};
     int size_L = sizeof(L) / sizeof(L[0]);
 
-    bool sanity_check = false;
-    bool runtime_benchmark = true;
+    bool sanity_check = true;
+    bool runtime_benchmark = false;
     /* runtime benchmark settings */
     int iter = 20;
     int repeats = 4;
@@ -143,6 +145,41 @@ int main()
         del_fullmatrix(V_hbaca);
 
         del_fullmatrix(A_);
+
+        printf("=====================================\n");
+        printf(" ACA / BACA for no Matrix precalculation Sanity Check\n");
+        printf("=====================================\n");
+        int d_test = 2;
+        int n_test = 4;
+        int nd_test;
+        double h_test;
+        double *nodes_x_test;
+        prkmatrix r_test;
+
+        nd_test = (int)pow((double)n_test, (double)d_test);
+        nodes_x_test = allocate_doubles(d_test * nd_test);
+        h_test = 2.0 / (n_test + 1);
+
+        for (int i = 0; i < n_test; i++)
+        {
+            for (int j = 0; j < n_test; j++)
+            {
+                nodes_x_test[i * n_test + j] = -1 + (i + 1) * h_test;
+                nodes_x_test[n_test * n_test + i * n_test + j] = -1 + (j + 1) * h_test;
+            }
+        }
+
+        // int rank_test = 10;
+        // r_test = aca_rkmatrix(d_test,rank_test,nd_test,nd_test,nodes_x_test,nodes_x_test,test_function_gaussian);
+        double *residuals_;
+        r_test = b_aca_rkmatrix(0.1, 2, d_test, nd_test, nd_test, nodes_x_test, nodes_x_test, test_function_gaussian, &residuals_);
+        free(residuals_);
+        pfullmatrix F = new_fullmatrix(nd_test, nd_test);
+        convertrk2_fullmatrix(r_test, F);
+        A_ = build_fullmatrix_gaussian(d_test, nd_test, nd_test, nodes_x_test, nodes_x_test);
+        print_fullmatrix(A_);
+        print_rkmatrix(r_test);
+        print_matrix_difference(A_, F);
     }
 
     if (runtime_benchmark)

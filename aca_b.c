@@ -1011,3 +1011,270 @@ void h_b_aca_rkmatrix_new(double eps, int d, int L, pcfullmatrix A, pfullmatrix 
         return;
     }
 }
+
+prkmatrix
+b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nodes_x, const double *nodes_y,
+               double (*test_function)(int dim, const double *x, const double *y), double **residuals)
+{
+
+    assert(nodes_x != NULL || d == 0 || rows == 0);
+    assert(nodes_y != NULL || d == 0 || cols == 0);
+    int k_max = min(rows, cols);
+    *residuals = allocate_doubles(k_max);
+
+    int i, j;
+    double *x, *y;
+    double u = 0.0;
+    double v = 0.0;
+
+    prkmatrix r = NULL;
+
+    int *piv_cols = NULL;
+
+    /* ---------------------------------
+       initial pivot columns
+       --------------------------------- */
+
+    piv_cols = random_unique(cols, d);
+
+    if (!piv_cols)
+        return NULL;
+
+    /* ---------------------------------
+       allocate rk matrix
+       --------------------------------- */
+
+    r = new_zero_rkmatrix(k_max, rows, cols);
+    x = allocate_doubles(dim * rows);
+    y = allocate_doubles(dim * cols);
+
+    for (j = 0; j < dim; j++)
+    {
+        for (i = 0; i < rows; i++)
+        {
+            x[dim * i + j] = nodes_x[j * rows + i];
+        }
+    }
+    for (j = 0; j < dim; j++)
+    {
+        for (i = 0; i < cols; i++)
+        {
+            y[dim * i + j] = nodes_y[j * cols + i];
+        }
+    }
+
+    if (!r)
+    {
+        free(piv_cols);
+        return NULL;
+    }
+
+    r->kt = 0;
+
+    /* =================================
+       ACA iteration
+       ================================= */
+    int iter = 0;
+    do
+    {
+        iter += 1;
+        pfullmatrix C = NULL;
+        pfullmatrix C_T = NULL;
+        pfullmatrix R = NULL;
+        pfullmatrix W = NULL;
+
+        pfullmatrix Q = NULL;
+        pfullmatrix T = NULL;
+
+        pfullmatrix U_k = NULL;
+        pfullmatrix V_k = NULL;
+
+        int *piv_rows = NULL;
+        int *J_bar = NULL;
+
+        int d_k = 0;
+
+        /* ---------------------------------
+           build C
+           --------------------------------- */
+
+        C = new_fullmatrix(rows, d);
+
+        for (i = 0; i < d; i++)
+        {
+            for (j = 0; j < rows; j++)
+            {
+                C->e[i * rows + j] = compute_entry_aca(r, dim, r->kt, j, piv_cols[i], x + dim * j, y + dim * piv_cols[i], test_function);
+            }
+        }
+
+        /* ---------------------------------
+           QR(C^T)
+           --------------------------------- */
+
+        C_T = transpose_fullmatrix(C);
+
+        QR(C_T, 0.0,
+           &Q,
+           &T,
+           &piv_rows,
+           &d_k);
+
+        if (d_k <= 0)
+        {
+            printf("QR rank failure\n");
+
+            del_fullmatrix(C);
+            del_fullmatrix(C_T);
+            del_fullmatrix(Q);
+            del_fullmatrix(T);
+
+            free(piv_rows);
+
+            break;
+        }
+
+        /* ---------------------------------
+           build R
+           --------------------------------- */
+
+        R = new_fullmatrix(d, cols);
+
+        for (i = 0; i < d; i++)
+        {
+            for (j = 0; j < cols; j++)
+            {
+                R->e[j * d + i] = compute_entry_aca(r, dim, r->kt, piv_rows[i], j, x + dim * piv_rows[i], y + dim * j, test_function);
+            }
+        }
+
+        /* ---------------------------------
+           build W
+           --------------------------------- */
+
+        W = new_fullmatrix(d, d);
+
+        for (i = 0; i < d; i++)
+        {
+            for (j = 0; j < d; j++)
+            {
+                W->e[j * d + i] = compute_entry_aca(r, dim, r->kt, piv_rows[i], piv_cols[j], x + dim * piv_rows[i], y + dim * piv_cols[j], test_function);
+            }
+        }
+
+        /* ---------------------------------
+           LRID
+           --------------------------------- */
+
+        LRID(C,
+             W,
+             R,
+             eps,
+             &U_k,
+             &V_k,
+             &d_k,
+             &J_bar);
+
+        if (d_k <= 0 || !U_k || !V_k)
+        {
+            printf("LRID failed\n");
+
+            del_fullmatrix(C);
+            del_fullmatrix(C_T);
+            del_fullmatrix(R);
+            del_fullmatrix(W);
+
+            del_fullmatrix(Q);
+            del_fullmatrix(T);
+
+            free(piv_rows);
+            free(J_bar);
+
+            break;
+        }
+
+        /* ---------------------------------
+           norm update
+           --------------------------------- */
+
+        v = LRNorm(U_k, V_k);
+
+        u = LRnormUp(r,
+                     U_k,
+                     V_k,
+                     u,
+                     v);
+
+        /* ---------------------------------
+           append low-rank block
+           --------------------------------- */
+
+        for (i = 0; i < d_k; i++)
+        {
+            for (j = 0; j < rows; j++)
+            {
+                r->a[(i + r->kt) * rows + j] =
+                    U_k->e[i * U_k->rows + j];
+            }
+
+            for (j = 0; j < cols; j++)
+            {
+                r->b[(i + r->kt) * cols + j] =
+                    V_k->e[j * V_k->rows + i];
+            }
+        }
+
+        r->kt += d_k;
+
+        /* ---------------------------------
+           update pivot columns
+           IMPORTANT:
+           free old piv_cols first
+           --------------------------------- */
+
+        free(piv_cols);
+        piv_cols = NULL;
+
+        del_fullmatrix(Q);
+        del_fullmatrix(T);
+
+        Q = NULL;
+        T = NULL;
+
+        {
+            int r_out;
+
+            QR(R,
+               0.0,
+               &Q,
+               &T,
+               &piv_cols,
+               &r_out);
+        }
+
+        /* ---------------------------------
+           cleanup iteration
+           --------------------------------- */
+
+        del_fullmatrix(C);
+        del_fullmatrix(C_T);
+
+        del_fullmatrix(R);
+        del_fullmatrix(W);
+
+        del_fullmatrix(Q);
+        del_fullmatrix(T);
+
+        del_fullmatrix(U_k);
+        del_fullmatrix(V_k);
+
+        free(piv_rows);
+        free(J_bar);
+        (*residuals)[iter] = u;
+    } while (v >= eps * u &&
+             (r->kt + d) < k_max);
+
+    free(piv_cols);
+
+    return r;
+}

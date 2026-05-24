@@ -29,3 +29,12 @@ prkmatrix
 b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A, double **residuals);
 
 void h_b_aca_rkmatrix_new(double eps, int d, int L, pcfullmatrix A, pfullmatrix *U, pfullmatrix *S, pfullmatrix *V, int *r);
+
+prkmatrix
+b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nodes_x, const double *nodes_y,
+               double (*test_function)(int dim, const double *x, const double *y), double **residuals);
+
+/*void h_b_aca_rkmatrix(
+    double eps, int d, int L, pfullmatrix *U, pfullmatrix *S, pfullmatrix *V, int dim, int rows, int cols, const double *nodes_x, const double *nodes_y, int row_off, int col_off, int ldx, int ldy,
+    double (*test_function)(int dim, const double *x, const double *y), int *r);
+*/
