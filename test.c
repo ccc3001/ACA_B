@@ -7,7 +7,7 @@
 #include "kernel_functions.h"
 #include "svd.h"
 #include "interpolation.h"
-
+#include "test_functions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
@@ -17,15 +17,424 @@
 
 int main()
 {
-    /* BACA block sizes */
-    int d[] = {2, 4, 8, 16, 32};
+
+    int d_test = 1;
+    int n_test = 5000;
+    int nd_test;
+    double *nodes_x_test_;
+    int d[] = {0, 2, 4, 8, 16, 32, 64, 128};
+    int L[] = {0, 1, 2};
+
     int size_d = sizeof(d) / sizeof(d[0]);
-
-    /*H_BACA depth L*/
-    int L[] = {4, 5};
     int size_L = sizeof(L) / sizeof(L[0]);
+    nd_test = (int)pow((double)n_test, (double)d_test);
+    nodes_x_test_ = allocate_doubles(d_test * nd_test);
+    double *nodes_y_test_ = allocate_doubles(d_test * nd_test);
+    double h = 1.0 / ((double)n_test + 1.0);
+    // double h = 0.5 / (n_test + 1);
 
-    bool sanity_check = true;
+    srand(1); // fixed seed for reproducibility
+
+    for (int k = 0; k < nd_test; k++)
+    {
+        nodes_x_test_[k] = ((double)k + 1.0) * h;
+
+        // nodes_x_test_[nd_test + k] = (k + 1) * h;
+
+        nodes_y_test_[k] = 0.2 + ((double)k + 1.0) * h;
+
+        // nodes_y_test_[nd_test + k] = 0.5 + (k + 1) * h;
+    }
+    // medium log kernel
+
+    printf("\n-------------------------------------\n");
+    printf("Running test_function_log\n");
+    printf("=====================================\n");
+    h = 0.4 / (n_test - 1);
+
+    for (int k = 0; k < n_test; k++)
+    {
+        nodes_x_test_[k] = 0.1 + k * h;
+        nodes_y_test_[k] = 0.4 + k * h;
+    }
+
+    if (matrix_aca_test(0, 0, false, "test_function_gaussian", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0) /* BACA block sizes */
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4, 1e-12, false, 1e-12, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    // matrix_aca_test(2, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 4, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log);
+    if (matrix_aca_test(4, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    // matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-6, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    if (matrix_aca_test(16, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+
+    // hard log kernel
+    h = 1.0 / (n_test + 1);
+
+    for (int k = 0; k < n_test; k++)
+    {
+        nodes_x_test_[k] = (k + 1) * h;
+        nodes_y_test_[k] = (k + 1) * h + 1e-4;
+    }
+    printf("\n-------------------------------------\n");
+    printf("Running test_function_gaussian\n");
+    printf("=====================================\n");
+
+    if (matrix_aca_test(0, 0, false, "test_function_log", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4, 1e-12, false, 1e-12, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    // matrix_aca_test(2, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 4, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log);
+    if (matrix_aca_test(4, 0, false, "test_function_log", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_log", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    // matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-6, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    if (matrix_aca_test(16, 0, false, "test_function_log", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_log", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_log", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_log", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_log\n");
+    }
+    // medium gaussian kernel
+    h = 0.4 / (n_test - 1);
+
+    for (int k = 0; k < n_test; k++)
+    {
+        nodes_x_test_[k] = 0.1 + k * h;
+        nodes_y_test_[k] = 0.4 + k * h;
+    }
+    printf("=====================================\n");
+    printf(" This gaussian benchmark\n");
+    printf("=====================================\n");
+    if (matrix_aca_test(0, 0, false, "test_function_gaussian", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4, 1e-12, false, 1e-12, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    // matrix_aca_test(2, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 4, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log);
+    if (matrix_aca_test(4, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    // matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-6, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    if (matrix_aca_test(16, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+
+    // hard gaussian kernel
+
+    h = 1.0 / (n_test + 1);
+
+    for (int k = 0; k < n_test; k++)
+    {
+        nodes_x_test_[k] = (k + 1) * h;
+        nodes_y_test_[k] = (k + 1) * h + 1e-3;
+    }
+
+    printf("\n-------------------------------------\n");
+    printf("Running test_function_gaussian\n");
+    printf("=====================================\n");
+    if (matrix_aca_test(0, 0, false, "test_function_gaussian", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    } /* BACA block sizes */
+
+    /* BACA block sizes */
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4, 1e-12, false, 1e-12, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    // matrix_aca_test(2, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 4, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log);
+    if (matrix_aca_test(4, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+
+    if (matrix_aca_test(8, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+
+    // matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-6, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    if (matrix_aca_test(16, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+
+    /* =========================================
+   Medium difficulty benchmark
+
+   x in [0.1,0.5]
+   y in [0.4,0.8]
+
+   Works well for:
+      test_function_poly8
+      test_function_tps
+      test_function_mq
+      test_function_imq
+      test_function_wendland
+   ========================================= */
+    printf("=====================================\n");
+    printf(" This polynomial benchmark\n");
+    printf("=====================================\n");
+
+    h = 0.4 / (n_test - 1);
+
+    for (int k = 0; k < n_test; k++)
+    {
+        nodes_x_test_[k] = 0.1 + k * h;
+        nodes_y_test_[k] = 0.4 + k * h;
+    }
+    if (matrix_aca_test(0, 0, false, "test_function_poly8", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_poly8\n");
+    } /* BACA block sizes */
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4, 1e-12, false, 1e-12, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    // matrix_aca_test(2, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 4, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log);
+    if (matrix_aca_test(4, 0, false, "test_function_poly8", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_poly8\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_poly8", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_poly8\n");
+    }
+
+    // matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-6, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    if (matrix_aca_test(16, 0, false, "test_function_poly8", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_poly8\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_poly8", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_poly8\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_poly8", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_poly8\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_poly8", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_poly8\n");
+    }
+
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4, 1e-12, false, 1e-12, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    // matrix_aca_test(2, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 4, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log);
+
+    printf("=====================================\n");
+    printf(" Thin plate spline kernel benchmark\n");
+    printf("=====================================\n");
+
+    if (matrix_aca_test(0, 0, false, "test_function_tps", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_tps) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_tps\n");
+    }
+    if (matrix_aca_test(4, 0, false, "test_function_tps", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_tps) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_tps\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_tps", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_tps) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_tps\n");
+    }
+    // matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-6, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    if (matrix_aca_test(16, 0, false, "test_function_tps", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_tps) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_tps\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_tps", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_tps) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_tps\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_tps", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_tps) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_tps\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_tps", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_tps) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_tps\n");
+    }
+
+    printf("=====================================\n");
+    printf(" Multiquadric kernel benchmark\n");
+    printf("=====================================\n");
+
+    if (matrix_aca_test(0, 0, false, "test_function_mq", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_mq\n");
+    }
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4, 1e-12, false, 1e-12, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    // matrix_aca_test(2, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 4, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log);
+    if (matrix_aca_test(4, 0, false, "test_function_mq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_mq\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_mq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_mq\n");
+    }
+    // matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-6, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+    if (matrix_aca_test(16, 0, false, "test_function_mq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_mq\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_mq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_mq\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_mq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_mq\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_mq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_mq\n");
+    }
+
+    printf("=====================================\n");
+    printf(" Inverse multiquadric kernel benchmark\n");
+    printf("=====================================\n");
+
+    if (matrix_aca_test(0, 0, false, "test_function_imq", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_imq\n");
+    }
+    if (matrix_aca_test(4, 0, false, "test_function_imq", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_imq\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_imq", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_imq\n");
+    }
+    if (matrix_aca_test(16, 0, false, "test_function_imq", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_mq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_imq\n");
+    }
+
+    if (matrix_aca_test(32, 0, false, "test_function_imq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_imq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_imq\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_imq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_imq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_imq\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_imq", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_imq) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_imq\n");
+    }
+
+    printf("=====================================\n");
+    printf(" Wendland C2 kernel benchmark\n");
+    printf("=====================================\n");
+    if (matrix_aca_test(0, 0, false, "test_function_wendland", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_wendland) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_wendland\n");
+    }
+
+    if (matrix_aca_test(4, 0, false, "test_function_wendland", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_wendland) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_wendland\n");
+    }
+    if (matrix_aca_test(8, 0, false, "test_function_wendland", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_wendland) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_wendland\n");
+    }
+    if (matrix_aca_test(16, 0, false, "test_function_wendland", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_wendland) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_wendland\n");
+    }
+    if (matrix_aca_test(32, 0, false, "test_function_wendland", 1, 4, 1e-20, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_wendland) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_wendland\n");
+    }
+    //  matrix_aca_test(2, 0, true, "test_function_gaussian", 40, 4,
+    // matrix_aca_test(2,
+
+    if (matrix_aca_test(64, 0, false, "test_function_wendland", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_wendland) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_wendland\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_wendland", 1, 4, 1e-12, true, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_wendland) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_wendland\n");
+    }
+
+    /*for (int i = 0; i < size_L; i++)
+    {
+        for (int j = 0; j < size_d; j++)
+        {
+            matrix_aca_test(d[j], L[i], true, "test_function_gaussian", 100, 4, 1e-5, false, 1e-5, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
+        }
+    }*/
+    /*H_BACA depth L*/
+
+    bool sanity_check = false;
     bool runtime_benchmark = false;
     /* runtime benchmark settings */
     int iter = 20;
@@ -49,15 +458,17 @@ int main()
         pfullmatrix A_ = gaussian_kernel_matrix(10, 10, 40, 0, 1.0);
         printf("Original matrix A:\n");
         print_fullmatrix(A_);
-        double *residuals;
+        double *residuals_u, *residuals_v, *rank_increase;
         prkmatrix RK_ACA = aca_rkmatrix_new(0.00000000000000000001, A_);
         printf("ACA rank: %d\n", RK_ACA->kt);
         pfullmatrix ACA_approx = new_zero_fullmatrix(A_->rows, A_->cols);
         convertrk2_fullmatrix(RK_ACA, ACA_approx);
         printf("ACA approximation:\n");
         print_fullmatrix(ACA_approx);
-        prkmatrix RK_BACA = b_aca_rkmatrix_new(0.00000000000000000001, 2, A_, &residuals);
-        free(residuals);
+        prkmatrix RK_BACA = b_aca_rkmatrix_new(0.00000000000000000001, 2, A_, &residuals_u, &residuals_v, &rank_increase);
+        free(residuals_u);
+        free(residuals_v);
+        free(rank_increase);
         printf("BACA rank: %d\n", RK_BACA->kt);
         pfullmatrix BACA_approx = new_zero_fullmatrix(A_->rows, A_->cols);
         convertrk2_fullmatrix(RK_BACA, BACA_approx);
@@ -149,7 +560,7 @@ int main()
         printf("=====================================\n");
         printf(" ACA / BACA for no Matrix precalculation Sanity Check\n");
         printf("=====================================\n");
-        int d_test = 2;
+        int d_test = 1;
         int n_test = 4;
         int nd_test;
         double h_test;
@@ -171,15 +582,60 @@ int main()
 
         // int rank_test = 10;
         // r_test = aca_rkmatrix(d_test,rank_test,nd_test,nd_test,nodes_x_test,nodes_x_test,test_function_gaussian);
-        double *residuals_;
-        r_test = b_aca_rkmatrix(0.1, 2, d_test, nd_test, nd_test, nodes_x_test, nodes_x_test, test_function_gaussian, &residuals_);
-        free(residuals_);
+        double *residuals_u_, *residuals_v_, *rank_increase_;
+        r_test = b_aca_rkmatrix(1e-12, 4, d_test, nd_test, nd_test, nodes_x_test, nodes_x_test, test_function_gaussian, &residuals_u_, &residuals_v_, &rank_increase_);
+        free(residuals_u_);
+        free(residuals_v_);
+        free(rank_increase_);
         pfullmatrix F = new_fullmatrix(nd_test, nd_test);
         convertrk2_fullmatrix(r_test, F);
         A_ = build_fullmatrix_gaussian(d_test, nd_test, nd_test, nodes_x_test, nodes_x_test);
         print_fullmatrix(A_);
         print_rkmatrix(r_test);
         print_matrix_difference(A_, F);
+
+        pfullmatrix U_h, V_h, S_h;
+        int r_h;
+
+        /* run HBACA */
+        printf("H_BACA\n");
+        ACAResidualNode *new_residual_node(void);
+        ACAResidualNode *root = new_residual_node();
+        root->row_start = 0;
+        root->col_start = 0;
+        h_b_aca_rkmatrix(
+            1e-12, 4, 1, root, &U_h, &S_h, &V_h, d_test, nd_test, nd_test, nodes_x_test, nodes_x_test, test_function_gaussian, &r_h);
+        del_residual_node(root);
+
+        US = new_fullmatrix(U_h->rows, S_h->cols);
+
+        mul_fullmatrix(U_h, S_h, US);
+        F =
+            new_fullmatrix(US->rows, V_h->cols);
+
+        mul_fullmatrix(US, V_h, F);
+        A_ = build_fullmatrix_gaussian(d_test, nd_test, nd_test, nodes_x_test, nodes_x_test);
+
+        printf("HBACA rank = %d\n", r_h);
+
+        print_fullmatrix(A_);
+
+        printf("\nHBACA factors\n");
+        print_fullmatrix(U_h);
+        print_fullmatrix(S_h);
+        print_fullmatrix(V_h);
+
+        printf("\nReconstructed matrix\n");
+        print_fullmatrix(F);
+        printf("\nDifference A-F\n");
+        print_matrix_difference(A_, F);
+        del_fullmatrix(US);
+        del_fullmatrix(F);
+        del_fullmatrix(A_);
+
+        del_fullmatrix(U_h);
+        del_fullmatrix(S_h);
+        del_fullmatrix(V_h);
     }
 
     if (runtime_benchmark)
@@ -286,13 +742,15 @@ int main()
 
                     double start =
                         omp_get_wtime();
-                    double *residuals;
+                    double *residuals_u, *residuals_v, *rank_increase;
                     prkmatrix RK_BACA =
                         b_aca_rkmatrix_new(
                             0.01,
                             d[j],
-                            A, &residuals);
-                    free(residuals);
+                            A, &residuals_u, &residuals_v, &rank_increase);
+                    free(residuals_u);
+                    free(residuals_v);
+                    free(rank_increase);
 
                     double end =
                         omp_get_wtime();
@@ -791,13 +1249,15 @@ int main()
                  * Seed RNG differently each run
                  */
                 srand(time(NULL) + start);
-                double *residuals;
+                double *residuals_u_, *residuals_v_, *rank_increase_;
                 prkmatrix RK_BACA =
                     b_aca_rkmatrix_new(
                         eps_residual,
                         d[j],
-                        A, &residuals);
-                free(residuals);
+                        A, &residuals_u_, &residuals_v_, &rank_increase_);
+                free(residuals_u_);
+                free(residuals_v_);
+                free(rank_increase_);
                 int kt_baca = RK_BACA->kt;
 
                 printf(

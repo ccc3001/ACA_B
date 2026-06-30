@@ -19,12 +19,13 @@ OBJECTS = \
 	new_aca.o \
 	aca_b.o \
 	kernel_functions.o \
-	svd.o
+	svd.o \
+	test_functions.o
 
 
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -g -DUSE_BLAS
-LDLIBS = -lopenblas -lm 
+LDLIBS = -lopenblas -lcjson -lm 
 CFLAGS += $(shell pkg-config --cflags openblas)
 LDFLAGS += $(shell pkg-config --libs openblas)
  test: test.c $(OBJECTS)

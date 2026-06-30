@@ -1,3 +1,7 @@
 data
 *.o
 *.exe
+*.json
+*.csv
+*.gz
+.vscode
