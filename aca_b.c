@@ -50,6 +50,8 @@ cJSON *aca_residual_node_to_json(
     cJSON_AddNumberToObject(json, "col_start", node->col_start);
     cJSON_AddNumberToObject(json, "col_size", node->col_size);
     cJSON_AddNumberToObject(json, "level", node->level);
+    cJSON_AddNumberToObject(json, "time", node->time);
+    
 
     if (node->u)
     {
@@ -421,12 +423,12 @@ cholesky(pcfullmatrix A)
 
     /* copy A (LAPACK overwrites input) */
     memcpy(L->e, A->e, sizeof(double) * n * n);
-    double reg = 1e-14;
+    /*double reg = 1e-14;
 
     for (int i = 0; i < n; i++)
     {
         L->e[i * n + i] += reg;
-    }
+    }*/
 
     /* compute Cholesky: A = L * L^T */
     int info = LAPACKE_dpotrf(
@@ -438,9 +440,68 @@ cholesky(pcfullmatrix A)
 
     if (info > 0)
     {
-        printf("Cholesky failed: matrix is not positive definite\n");
+        printf("\n=========================================\n");
+        printf("Cholesky failed.\n");
+        printf("Leading principal minor of order %d is not positive definite.\n", info);
+
+        int k = info - 1;
+
+        printf("\nPivot diagonal A(%d,%d) = %.16e\n",
+            k, k, L->e[k*n + k]);
+
+        /* symmetry check */
+        double max_asym = 0.0;
+        int imax = 0, jmax = 0;
+
+        for (int i = 0; i < n; i++)
+        {
+            for (int j = i + 1; j < n; j++)
+            {
+                double diff = fabs(L->e[i + j*n] - L->e[j + i*n]);
+
+                if (diff > max_asym)
+                {
+                    max_asym = diff;
+                    imax = i;
+                    jmax = j;
+                }
+            }
+        }
+
+        printf("\nMaximum asymmetry = %.16e at (%d,%d)\n",
+            max_asym, imax, jmax);
+
+        /* diagonal statistics */
+        double mind = L->e[0];
+        double maxd = L->e[0];
+
+        for (int i = 1; i < n; i++)
+        {
+            double d = L->e[i*n + i];
+
+            if (d < mind)
+                mind = d;
+
+            if (d > maxd)
+                maxd = d;
+        }
+
+        printf("Diagonal range: [% .16e , % .16e]\n",
+            mind, maxd);
+
+        /* print failing row */
+        printf("\nFailing row %d:\n", k);
+
+        for (int j = 0; j < n; j++)
+            printf("% .3e ", L->e[k + j*n]);
+
+        printf("\n");
+
+        printf("=========================================\n");
+
         free(L->e);
         free(L);
+
         return NULL;
     }
 
@@ -500,9 +561,10 @@ LRNorm(pcfullmatrix U, pcfullmatrix V)
     int m = U->rows;
     int k = U->cols;
     int n = V->cols;
-
+    
     /* G1 = U^T U (k x k) */
     G1 = new_fullmatrix(k, k);
+
     cblas_dgemm(
         CblasColMajor,
         CblasTrans,
@@ -517,15 +579,20 @@ LRNorm(pcfullmatrix U, pcfullmatrix V)
     /* G2 = V^T V (k x k) */
     G2 = new_fullmatrix(k, k);
     cblas_dgemm(
-        CblasColMajor,
-        CblasTrans,
-        CblasNoTrans,
-        k, k, n,
-        1.0,
-        V->e, n,
-        V->e, n,
-        0.0,
-        G2->e, k);
+    CblasColMajor,
+    CblasNoTrans,
+    CblasTrans,
+    k,              /* rows */
+    k,              /* cols */
+    n,              /* inner dimension */
+    1.0,
+    V->e,
+    k,              /* lda = number of rows = k */
+    V->e,
+    k,
+    0.0,
+    G2->e,
+    k);
 
     /* Cholesky */
     // printf("G1 size: %d x %d\n", G1->rows, G1->cols);
@@ -1810,7 +1877,16 @@ void h_b_aca_rkmatrix(double eps, int d, int L, ACAResidualNode *node, pfullmatr
         del_fullmatrix(V2_temp);
         double merge_time = omp_get_wtime() - merge_start;
 
-        node->time = setup_time + merge_time;
+        double total = setup_time + merge_time;
+
+        printf("setup=%0.15f merge=%0.15f total=%0.15f\n",
+            setup_time,
+            merge_time,
+            total);
+
+        node->time = total;
+
+        printf("stored=%0.15f\n", node->time);
         return;
     }
 }
