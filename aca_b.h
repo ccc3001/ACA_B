@@ -21,6 +21,8 @@ typedef struct ACAResidualNode
     double *v;
     double *rank_inc;
     int rank_len;
+    double time;
+
 } ACAResidualNode;
 cJSON *aca_residual_node_to_json(ACAResidualNode *node);
 ACAResidualNode *new_residual_node(void);

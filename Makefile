@@ -4,7 +4,7 @@
 #
 
 export OPENBLAS_NUM_THREADS=1
-export OMP_NUM_THREADS=1
+# export OMP_NUM_THREADS=1
 
 
 OBJECTS = \
@@ -28,7 +28,7 @@ CFLAGS = -Wall -Wextra -pedantic -g -DUSE_BLAS
 LDLIBS = -lopenblas -lcjson -lm 
 CFLAGS += $(shell pkg-config --cflags openblas)
 LDFLAGS += $(shell pkg-config --libs openblas)
- test: test.c $(OBJECTS)
+ test_1: test.c $(OBJECTS)
 	$(CC) $(CFLAGS)  test.c $(OBJECTS) -o $@ $(LDLIBS)
 
 .PHONY: clean

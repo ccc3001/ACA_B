@@ -266,6 +266,7 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
         int best_aca_rank = 0;
 
         int best_aca_start = -1;
+        bool stop_after_this_run = false;
         for (int start = 0; start < starts_res; start++)
         {
             printf("\nACA random start %d / %d\n", start + 1, starts_res);
@@ -326,7 +327,11 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
                 cJSON_AddNumberToObject(start_json, "start", start + 1);
 
                 cJSON_AddNumberToObject(start_json, "rank", rank);
-
+                if (rank >= 3000)
+                {
+                    printf("Rank %d reached target. No further random starts needed.\n", rank);
+                    stop_after_this_run = true;
+                }
                 cJSON *frob_array = cJSON_CreateArray();
 
                 double *current_frob_norms = malloc(rank * sizeof(double));
@@ -429,19 +434,46 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
 
                 cJSON_AddItemToObject(start_json, "frob_norms", frob_array);
 
-                cJSON_AddItemToArray(starts_json, start_json);
+                char key[16];
+                snprintf(key, sizeof(key), "%d", start + 1);
+                cJSON_AddItemToObject(starts_json, key, start_json);
             }
             else
             {
-                printf("ACA produced rank %d\n", rank);
+                printf("%s produced rank %d\n",
+                       JSON_STRING(root, "method"),
+                       rank);
+
+                if (rank >= 3000)
+                {
+                    printf("Rank %d reached target. No further random starts needed.\n", rank);
+                    stop_after_this_run = true;
+                }
 
                 cJSON_AddNumberToObject(start_json, "start", start + 1);
-
                 cJSON_AddNumberToObject(start_json, "rank", rank);
 
                 cJSON *frob_array = cJSON_CreateArray();
 
-                double *current_frob_norms = malloc(rank * sizeof(double));
+                /* determine how many Frobenius norms we will compute */
+
+                int num_frob;
+
+                if (strcmp(JSON_STRING(root, "method"), "ACA") == 0)
+                    num_frob = rank;
+                else
+                {
+                    num_frob = 0;
+
+                    while (num_frob < rank &&
+                           rank_increase[num_frob] > 0)
+                    {
+                        num_frob++;
+                    }
+                }
+
+                double *current_frob_norms =
+                    malloc(num_frob * sizeof(double));
 
                 if (!current_frob_norms)
                 {
@@ -453,52 +485,130 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
 
                 RK_ACA->kt = 0;
 
-                for (int i = 1; i <= rank; i++)
+                if (strcmp(JSON_STRING(root, "method"), "ACA") == 0)
                 {
-                    RK_ACA->kt = i;
+                    RK_ACA->kt = 0;
 
-                    pfullmatrix F = new_zero_fullmatrix(RK_ACA->rows, RK_ACA->cols);
-
-                    convertrk2_fullmatrix(RK_ACA, F);
-
-                    double frob_norm = 0.0;
-
-                    for (int j = 0; j < RK_ACA->cols; j++)
+                    for (int iter = 0; iter < rank; iter++)
                     {
-                        for (int i = 0; i < RK_ACA->rows; i++)
+                        RK_ACA->kt = iter + 1;
+
+                        pfullmatrix F =
+                            new_zero_fullmatrix(RK_ACA->rows,
+                                                RK_ACA->cols);
+
+                        convertrk2_fullmatrix(RK_ACA, F);
+
+                        double frob_norm = 0.0;
+
+                        for (int j = 0; j < RK_ACA->cols; j++)
                         {
-                            double xi[dim];
-                            double yj[dim];
-
-                            for (int l = 0; l < dim; l++)
+                            for (int i = 0; i < RK_ACA->rows; i++)
                             {
-                                xi[l] = nodes_x[l * rows + i];
-                                yj[l] = nodes_y[l * cols + j];
+                                double xi[dim];
+                                double yj[dim];
+
+                                for (int l = 0; l < dim; l++)
+                                {
+                                    xi[l] = nodes_x[l * rows + i];
+                                    yj[l] = nodes_y[l * cols + j];
+                                }
+
+                                double exact =
+                                    test_function(dim,
+                                                  xi,
+                                                  yj);
+
+                                double approx =
+                                    F->e[j * F->rows + i];
+
+                                double diff =
+                                    exact - approx;
+
+                                frob_norm += diff * diff;
                             }
-
-                            double exact = test_function(dim, xi, yj);
-
-                            double approx =
-                                F->e[j * F->rows + i];
-
-                            double diff = exact - approx;
-
-                            frob_norm += diff * diff;
                         }
+
+                        frob_norm = sqrt(frob_norm);
+
+                        current_frob_norms[iter] = frob_norm;
+
+                        cJSON_AddItemToArray(
+                            frob_array,
+                            cJSON_CreateNumber(frob_norm));
+
+                        printf("ACA rank %d: Frobenius norm = %.6e\n",
+                               iter + 1,
+                               frob_norm);
+
+                        del_fullmatrix(F);
                     }
+                }
+                else if (strcmp(JSON_STRING(root, "method"), "BACA") == 0)
+                {
+                    RK_ACA->kt = 0;
 
-                    frob_norm = sqrt(frob_norm);
+                    int cumulative_rank = 0;
 
-                    current_frob_norms[i - 1] = frob_norm;
+                    for (int iter = 0; iter < num_frob; iter++)
+                    {
+                        cumulative_rank += (int)rank_increase[iter];
 
-                    cJSON_AddItemToArray(frob_array, cJSON_CreateNumber(frob_norm));
-                    printf("ACA rank %d: "
-                           "Frobenius norm = %.6e\n",
-                           i, frob_norm);
-                    del_fullmatrix(F);
+                        RK_ACA->kt = cumulative_rank;
+
+                        pfullmatrix F =
+                            new_zero_fullmatrix(RK_ACA->rows,
+                                                RK_ACA->cols);
+
+                        convertrk2_fullmatrix(RK_ACA, F);
+
+                        double frob_norm = 0.0;
+
+                        for (int j = 0; j < RK_ACA->cols; j++)
+                        {
+                            for (int i = 0; i < RK_ACA->rows; i++)
+                            {
+                                double xi[dim];
+                                double yj[dim];
+
+                                for (int l = 0; l < dim; l++)
+                                {
+                                    xi[l] = nodes_x[l * rows + i];
+                                    yj[l] = nodes_y[l * cols + j];
+                                }
+
+                                double exact =
+                                    test_function(dim,
+                                                  xi,
+                                                  yj);
+
+                                double approx =
+                                    F->e[j * F->rows + i];
+
+                                double diff =
+                                    exact - approx;
+
+                                frob_norm += diff * diff;
+                            }
+                        }
+
+                        frob_norm = sqrt(frob_norm);
+
+                        current_frob_norms[iter] = frob_norm;
+
+                        cJSON_AddItemToArray(
+                            frob_array,
+                            cJSON_CreateNumber(frob_norm));
+
+                        printf("BACA rank %d: Frobenius norm = %.6e\n",
+                               cumulative_rank,
+                               frob_norm);
+
+                        del_fullmatrix(F);
+                    }
                 }
 
-                double final_norm = current_frob_norms[rank - 1];
+                double final_norm = current_frob_norms[num_frob - 1];
 
                 printf(
                     "ACA final norm "
@@ -509,7 +619,9 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
 
                 cJSON_AddItemToObject(start_json, "frob_norms", frob_array);
 
-                cJSON_AddItemToArray(starts_json, start_json);
+                char key[16];
+                snprintf(key, sizeof(key), "%d", start + 1);
+                cJSON_AddItemToObject(starts_json, key, start_json);
 
                 if (final_norm < best_aca_final_norm)
                 {
@@ -528,10 +640,8 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
                     best_aca_frob_norms =
                         malloc(rank * sizeof(double));
 
-                    for (int i = 0; i < rank; i++)
-                    {
+                    for (int i = 0; i < num_frob; i++)
                         best_aca_frob_norms[i] = current_frob_norms[i];
-                    }
 
                     printf(
                         "--> New best ACA run found.\n");
@@ -540,6 +650,10 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
                 free(current_frob_norms);
 
                 del_rkmatrix(RK_ACA);
+            }
+            if (stop_after_this_run)
+            {
+                break;
             }
         }
         if (best_aca_frob_norms)

@@ -555,48 +555,58 @@ double LRnormUp(prkmatrix R,
     int r = R->kt;
     int r_bar = U_bar->cols;
 
-    double *U = R->a; // m × r (column-major)
-    double *B = R->b; // n × r (column-major)
+    double *U = R->a; /* m x r */
+    double *B = R->b; /* n x r */
 
-    /* U^T U_bar (r × r_bar) */
+    /* U^T U_bar : r x r_bar */
     double *UtU_bar = calloc(r * r_bar, sizeof(double));
 
     cblas_dgemm(CblasColMajor,
-                CblasTrans, CblasNoTrans,
-                r, r_bar, m,
+                CblasTrans,
+                CblasNoTrans,
+                r,
+                r_bar,
+                m,
                 1.0,
-                U, m,
-                U_bar->e, m,
+                U,
+                m,
+                U_bar->e,
+                m,
                 0.0,
-                UtU_bar, r);
+                UtU_bar,
+                r);
 
-    /* V_bar * B (r_bar × r) */
-    double *VbarB = calloc(r_bar * r, sizeof(double));
+    /* V * V_bar^T : r x r_bar */
+    double *VVbarT = calloc(r * r_bar, sizeof(double));
 
     cblas_dgemm(CblasColMajor,
-                CblasNoTrans, CblasNoTrans,
-                r_bar, r, n,
+                CblasTrans,
+                CblasTrans,
+                r,
+                r_bar,
+                n,
                 1.0,
-                V_bar->e, r_bar,
-                B, n,
+                B,
+                n,
+                V_bar->e,
+                r_bar,
                 0.0,
-                VbarB, r_bar);
+                VVbarT,
+                r);
 
-    /* Frobenius inner product */
     double sum = 0.0;
 
     for (int j = 0; j < r_bar; j++)
     {
         for (int i = 0; i < r; i++)
         {
-            double Uij = UtU_bar[i + j * r];   // (i,j)
-            double Vij = VbarB[i + j * r_bar]; // (i,j) FIXED
-            sum += Uij * Vij;
+            sum += UtU_bar[i + j * r] *
+                   VVbarT[i + j * r];
         }
     }
 
     free(UtU_bar);
-    free(VbarB);
+    free(VVbarT);
 
     double s = nu * nu + nu_bar * nu_bar + 2.0 * sum;
 
@@ -1126,7 +1136,7 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
                double (*test_function)(int dim, const double *x, const double *y), double **residuals_u, double **residuals_v, double **rank_increase)
 {
     int retry_count = 0;
-    const int max_retries = 10;
+    const int max_retries = 2;
     assert(nodes_x != NULL || d == 0 || rows == 0);
     assert(nodes_y != NULL || d == 0 || cols == 0);
     int k_max = min(rows, cols);
@@ -1142,18 +1152,21 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
     prkmatrix r = NULL;
 
     int *piv_cols = NULL;
+    int *prev_piv_cols = NULL;
 
     /* ---------------------------------
        initial pivot columns
        --------------------------------- */
 
     piv_cols = random_unique(cols, d);
-    printf("initial piv_cols: ");
+    prev_piv_cols = malloc(d * sizeof(int));
+    memcpy(prev_piv_cols, piv_cols, d * sizeof(int));
+    /*printf("initial piv_cols: ");
     for (int i = 0; i < d; i++)
     {
         printf("%d ", piv_cols[i]);
     }
-    printf("\n");
+    printf("\n");*/
     if (!piv_cols)
         return NULL;
 
@@ -1381,10 +1394,38 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
                &T,
                &piv_cols,
                &r_out);
-            printf("Updated pivot columns: ");
+
+            /* Compare against previous pivot block */
+
+            int same = 1;
+
+            for (i = 0; i < d; i++)
+            {
+                if (piv_cols[i] != prev_piv_cols[i])
+                {
+                    same = 0;
+                    break;
+                }
+            }
+
+            if (same)
+            {
+                printf("Same pivot block as previous iteration. Choosing random pivots.\n");
+
+                free(piv_cols);
+                piv_cols = random_unique(cols, d);
+            }
+
+            /* Remember current pivots for next iteration */
+
+            memcpy(prev_piv_cols,
+                   piv_cols,
+                   d * sizeof(int));
+
+            /*printf("Updated pivot columns: ");
             for (i = 0; i < d; i++)
                 printf("%d ", piv_cols[i]);
-            printf("\n");
+            printf("\n");*/
         }
         /* ---------------------------------
            cleanup iteration
@@ -1404,10 +1445,9 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
 
         free(piv_rows);
         free(J_bar);
-
     } while (v >= eps * u &&
              (r->kt + d) < k_max);
-
+    free(prev_piv_cols);
     free(piv_cols);
 
     return r;
@@ -1423,6 +1463,8 @@ void h_b_aca_rkmatrix(double eps, int d, int L, ACAResidualNode *node, pfullmatr
 
     if (L == 0)
     {
+        double start = omp_get_wtime();
+
         double *u_res;
         double *v_res;
         double *rank_inc;
@@ -1483,10 +1525,13 @@ void h_b_aca_rkmatrix(double eps, int d, int L, ACAResidualNode *node, pfullmatr
         (*r) = r_->kt;
         del_fullmatrix(V_);
         del_rkmatrix(r_);
+        node->time = omp_get_wtime() - start;
         return;
     }
     if (L > 0)
     {
+        double setup_start = omp_get_wtime();
+
         int row1 = rows / 2;
         int row2 = rows - row1;
 
@@ -1535,6 +1580,8 @@ void h_b_aca_rkmatrix(double eps, int d, int L, ACAResidualNode *node, pfullmatr
         pfullmatrix U21, S21, V21;
         pfullmatrix U22, S22, V22;
         int r11, r12, r21, r22;
+        double setup_time = omp_get_wtime() - setup_start;
+
 #pragma omp parallel sections num_threads(4)
         {
 #pragma omp section
@@ -1554,6 +1601,7 @@ void h_b_aca_rkmatrix(double eps, int d, int L, ACAResidualNode *node, pfullmatr
                 h_b_aca_rkmatrix(eps, d, L - 1, node->child[3], &U22, &S22, &V22, dim, row2, col2, X2, Y2, test_function, &r22);
             }
         }
+        double merge_start = omp_get_wtime();
         free(X1);
         free(X2);
         free(Y1);
@@ -1760,6 +1808,9 @@ void h_b_aca_rkmatrix(double eps, int d, int L, ACAResidualNode *node, pfullmatr
 
         del_fullmatrix(V1_temp);
         del_fullmatrix(V2_temp);
+        double merge_time = omp_get_wtime() - merge_start;
+
+        node->time = setup_time + merge_time;
         return;
     }
 }
