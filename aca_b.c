@@ -51,7 +51,6 @@ cJSON *aca_residual_node_to_json(
     cJSON_AddNumberToObject(json, "col_size", node->col_size);
     cJSON_AddNumberToObject(json, "level", node->level);
     cJSON_AddNumberToObject(json, "time", node->time);
-    
 
     if (node->u)
     {
@@ -133,7 +132,7 @@ int *random_unique(int n, int d)
 }
 
 void QR(pfullmatrix W,
-        double eps,
+        double eps, double *max_pivot,
         pfullmatrix *Q_out,
         pfullmatrix *R_out,
         int **Jbar_out,
@@ -195,9 +194,14 @@ void QR(pfullmatrix W,
     /* stable numerical rank detection */
     double pivot_abs = 1e-50;
 
-    double first_pivot =
-        fabs(R->e[0]);
+    double first_pivot = fabs(R->e[0]);
 
+    if (first_pivot > (*max_pivot))
+    {
+        *max_pivot = first_pivot;
+    }
+
+    //*max_pivot = first_pivot;
     int r = 0;
 
     for (int i = 0; i < k; i++)
@@ -211,7 +215,8 @@ void QR(pfullmatrix W,
             break;
 
         /* relative threshold */
-        if (piv < eps * first_pivot)
+        // if (piv < eps * first_pivot)
+        if (piv < eps * (*max_pivot))
             break;
         r++;
     }
@@ -264,6 +269,7 @@ void LRID(pfullmatrix C,
           pfullmatrix W,
           pfullmatrix R,
           double eps,
+          double *max_piv,
           pfullmatrix *U_out,
           pfullmatrix *V_out,
           int *r_out,
@@ -275,7 +281,8 @@ void LRID(pfullmatrix C,
     int *Jbar;
     int r;
 
-    QR(W, eps, &Q, &T, &Jbar, &r);
+    printf("old max pivot changed to:%.16f\n", *max_piv);
+    QR(W, eps, max_piv, &Q, &T, &Jbar, &r);
 
     if (r <= 0)
     {
@@ -398,6 +405,7 @@ void LRID(pfullmatrix C,
     *U_out = U;
     *V_out = V;
     *r_out = r;
+    printf("LRID: rank = %d U: %d x %d, V: %d x %d\n", r, U->rows, U->cols, V->rows, V->cols);
     *Jbar_out = Jbar;
 
     del_fullmatrix(QtR);
@@ -447,7 +455,7 @@ cholesky(pcfullmatrix A)
         int k = info - 1;
 
         printf("\nPivot diagonal A(%d,%d) = %.16e\n",
-            k, k, L->e[k*n + k]);
+               k, k, L->e[k * n + k]);
 
         /* symmetry check */
         double max_asym = 0.0;
@@ -457,7 +465,7 @@ cholesky(pcfullmatrix A)
         {
             for (int j = i + 1; j < n; j++)
             {
-                double diff = fabs(L->e[i + j*n] - L->e[j + i*n]);
+                double diff = fabs(L->e[i + j * n] - L->e[j + i * n]);
 
                 if (diff > max_asym)
                 {
@@ -469,7 +477,7 @@ cholesky(pcfullmatrix A)
         }
 
         printf("\nMaximum asymmetry = %.16e at (%d,%d)\n",
-            max_asym, imax, jmax);
+               max_asym, imax, jmax);
 
         /* diagonal statistics */
         double mind = L->e[0];
@@ -477,7 +485,7 @@ cholesky(pcfullmatrix A)
 
         for (int i = 1; i < n; i++)
         {
-            double d = L->e[i*n + i];
+            double d = L->e[i * n + i];
 
             if (d < mind)
                 mind = d;
@@ -487,13 +495,13 @@ cholesky(pcfullmatrix A)
         }
 
         printf("Diagonal range: [% .16e , % .16e]\n",
-            mind, maxd);
+               mind, maxd);
 
         /* print failing row */
         printf("\nFailing row %d:\n", k);
 
         for (int j = 0; j < n; j++)
-            printf("% .3e ", L->e[k + j*n]);
+            printf("% .3e ", L->e[k + j * n]);
 
         printf("\n");
 
@@ -561,7 +569,7 @@ LRNorm(pcfullmatrix U, pcfullmatrix V)
     int m = U->rows;
     int k = U->cols;
     int n = V->cols;
-    
+
     /* G1 = U^T U (k x k) */
     G1 = new_fullmatrix(k, k);
 
@@ -579,20 +587,20 @@ LRNorm(pcfullmatrix U, pcfullmatrix V)
     /* G2 = V^T V (k x k) */
     G2 = new_fullmatrix(k, k);
     cblas_dgemm(
-    CblasColMajor,
-    CblasNoTrans,
-    CblasTrans,
-    k,              /* rows */
-    k,              /* cols */
-    n,              /* inner dimension */
-    1.0,
-    V->e,
-    k,              /* lda = number of rows = k */
-    V->e,
-    k,
-    0.0,
-    G2->e,
-    k);
+        CblasColMajor,
+        CblasNoTrans,
+        CblasTrans,
+        k, /* rows */
+        k, /* cols */
+        n, /* inner dimension */
+        1.0,
+        V->e,
+        k, /* lda = number of rows = k */
+        V->e,
+        k,
+        0.0,
+        G2->e,
+        k);
 
     /* Cholesky */
     // printf("G1 size: %d x %d\n", G1->rows, G1->cols);
@@ -690,10 +698,10 @@ b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A, double **residuals_u, doub
     *residuals_v = allocate_doubles(k_max);
     *rank_increase = allocate_doubles(k_max);
     int i, j;
-
+    double max_piv = 0.0;
     double u = 0.0;
     double v = 0.0;
-
+    double piv;
     prkmatrix r = NULL;
 
     int *piv_cols = NULL;
@@ -769,8 +777,8 @@ b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A, double **residuals_u, doub
            --------------------------------- */
 
         C_T = transpose_fullmatrix(C);
-
-        QR(C_T, 0.0,
+        piv = 0.0;
+        QR(C_T, 0.0, &piv,
            &Q,
            &T,
            &piv_rows,
@@ -838,6 +846,7 @@ b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A, double **residuals_u, doub
              W,
              R,
              eps,
+             &max_piv,
              &U_k,
              &V_k,
              &d_k,
@@ -913,9 +922,10 @@ b_aca_rkmatrix_new(double eps, int d, pcfullmatrix A, double **residuals_u, doub
 
         {
             int r_out;
-
+            piv = 0;
             QR(R,
                0.0,
+               &piv,
                &Q,
                &T,
                &piv_cols,
@@ -1211,10 +1221,16 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
     *residuals_v = allocate_doubles(k_max);
     *rank_increase = allocate_doubles(k_max);
 
+    memset(*residuals_u, 0, k_max * sizeof(double));
+    memset(*residuals_v, 0, k_max * sizeof(double));
+    memset(*rank_increase, 0, k_max * sizeof(double));
+
     int i, j;
     double *x, *y;
+    double max_piv = 0.0;
     double u = 0.0;
     double v = 0.0;
+    double piv;
 
     prkmatrix r = NULL;
 
@@ -1310,13 +1326,12 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
            --------------------------------- */
 
         C_T = transpose_fullmatrix(C);
-
-        QR(C_T, 0.0,
+        piv = 0;
+        QR(C_T, 0.0, &piv,
            &Q,
            &T,
            &piv_rows,
            &d_k);
-        printf("iter=%d d=%d d_k=%d\n", iter, d, d_k);
         if (d_k <= 0)
         {
             printf("QR rank failure d_k = %d\n", d_k);
@@ -1378,10 +1393,28 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
              W,
              R,
              eps,
+             &max_piv,
              &U_k,
              &V_k,
              &d_k,
              &J_bar);
+        if (r->kt + d_k > k_max)
+        {
+            printf("LRID rank exceeds maximum rank: r->kt + d_k = %d > k_max = %d\n", r->kt + d_k, k_max);
+
+            del_fullmatrix(C);
+            del_fullmatrix(C_T);
+            del_fullmatrix(R);
+            del_fullmatrix(W);
+
+            del_fullmatrix(Q);
+            del_fullmatrix(T);
+
+            free(piv_rows);
+            free(J_bar);
+
+            break;
+        }
 
         if (d_k <= 0 || !U_k || !V_k)
         {
@@ -1398,7 +1431,7 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
             free(piv_rows);
             free(J_bar);
 
-            break;
+            return r;
         }
 
         /* ---------------------------------
@@ -1436,6 +1469,7 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
         (*rank_increase)[iter] = d_k;
         iter += 1;
         r->kt += d_k;
+        printf("iter=%d d=%d d_k=%d r->kt=%d u=%g v=%g\n", iter, d, d_k, r->kt, u, v);
 
         /* ---------------------------------
            update pivot columns
@@ -1454,9 +1488,9 @@ b_aca_rkmatrix(double eps, int d, int dim, int rows, int cols, const double *nod
 
         {
             int r_out;
-
+            piv = 0;
             QR(R,
-               0.0,
+               0.0, &piv,
                &Q,
                &T,
                &piv_cols,
@@ -1880,9 +1914,9 @@ void h_b_aca_rkmatrix(double eps, int d, int L, ACAResidualNode *node, pfullmatr
         double total = setup_time + merge_time;
 
         printf("setup=%0.15f merge=%0.15f total=%0.15f\n",
-            setup_time,
-            merge_time,
-            total);
+               setup_time,
+               merge_time,
+               total);
 
         node->time = total;
 

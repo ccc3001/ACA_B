@@ -26,7 +26,7 @@
 
 int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_function_name, int iter, int repeats, double eps,
                     bool residuals_benchmark, double eps_residual, int starts_res, int dim, int rows, int cols, const double *nodes_x, const double *nodes_y,
-                    double (*test_function)(int dim, const double *x, const double *y),bool hbaca_residual_test,double eps_hbaca,int h_baca_repeats)
+                    double (*test_function)(int dim, const double *x, const double *y), bool hbaca_residual_test, double eps_hbaca, int h_baca_repeats, int seed)
 {
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
@@ -271,7 +271,9 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
         {
             printf("\nACA random start %d / %d\n", start + 1, starts_res);
             cJSON *start_json = cJSON_CreateObject();
-            int seed = time(NULL) + start;
+            if (seed == 0)
+                seed = time(NULL) + start;
+
             srand(seed);
             cJSON_AddNumberToObject(start_json, "seed", seed);
             double *residuals_u = NULL;
@@ -689,173 +691,345 @@ int matrix_aca_test(int d, int L, bool runtime_benchmark, const char *test_funct
         cJSON_AddItemToObject(root, "residual_benchmark", residual_bench);
     }
 
-if (hbaca_residual_test)
-{
-    printf("\n-------------------------------------\n");
-    printf("Running HBACA residual test for %s\n",
-           JSON_STRING(root, "method"));
-
-    cJSON *hbaca_bench = cJSON_CreateObject();
-    cJSON_AddBoolToObject(hbaca_bench, "enabled", true);
-    cJSON_AddNumberToObject(hbaca_bench, "epsilon", eps_hbaca);
-
-    cJSON *runs = cJSON_CreateArray();
-
-    for (int iter = 0; iter < h_baca_repeats; iter++)
+    if (hbaca_residual_test)
     {
-        printf("\nIteration %d / %d\n", iter + 1, h_baca_repeats);
+        printf("\n-------------------------------------\n");
+        printf("Running HBACA residual test for %s\n",
+               JSON_STRING(root, "method"));
 
-        cJSON *run = cJSON_CreateObject();
+        cJSON *hbaca_bench = cJSON_CreateObject();
+        cJSON_AddBoolToObject(hbaca_bench, "enabled", true);
+        cJSON_AddNumberToObject(hbaca_bench, "epsilon", eps_hbaca);
 
-        prkmatrix RK_ACA = NULL;
+        cJSON *runs = cJSON_CreateArray();
 
-        pfullmatrix U_h = NULL;
-        pfullmatrix S_h = NULL;
-        pfullmatrix V_h = NULL;
-
-        double *residuals_u = NULL;
-        double *residuals_v = NULL;
-        double *rank_increase = NULL;
-
-        int rank = 0;
-
-        if (L > 0)
+        for (int iter = 0; iter < h_baca_repeats; iter++)
         {
-            printf("HBACA (L=%d, d=%d)\n", L, d);
+            printf("\nIteration %d / %d\n", iter + 1, h_baca_repeats);
 
-            ACAResidualNode *root_node = new_residual_node();
-            root_node->row_start = 0;
-            root_node->col_start = 0;
+            cJSON *run = cJSON_CreateObject();
 
-            h_b_aca_rkmatrix(
-                eps_hbaca,
-                d,
-                L,
-                root_node,
-                &U_h,
-                &S_h,
-                &V_h,
-                dim,
-                rows,
-                cols,
-                nodes_x,
-                nodes_y,
-                test_function,
-                &rank);
+            prkmatrix RK_ACA = NULL;
 
-            cJSON_AddItemToObject(
-                run,
-                "tree",
-                aca_residual_node_to_json(root_node));
+            pfullmatrix U_h = NULL;
+            pfullmatrix S_h = NULL;
+            pfullmatrix V_h = NULL;
 
-            del_residual_node(root_node);
+            double *residuals_u = NULL;
+            double *residuals_v = NULL;
+            double *rank_increase = NULL;
 
-            cJSON_AddNumberToObject(run, "rank", rank);
+            int rank = 0;
 
-            /* Store singular values returned by HBACA */
-
-            cJSON *sigma_array = cJSON_CreateArray();
-
-            for (int i = 0; i < S_h->rows; i++)
+            if (L > 0)
             {
-                double sigma = S_h->e[i * S_h->rows + i];
+                printf("HBACA (L=%d, d=%d)\n", L, d);
 
-                cJSON_AddItemToArray(
-                    sigma_array,
-                    cJSON_CreateNumber(sigma));
+                ACAResidualNode *root_node = new_residual_node();
+                root_node->row_start = 0;
+                root_node->col_start = 0;
+
+                h_b_aca_rkmatrix(
+                    eps_hbaca,
+                    d,
+                    L,
+                    root_node,
+                    &U_h,
+                    &S_h,
+                    &V_h,
+                    dim,
+                    rows,
+                    cols,
+                    nodes_x,
+                    nodes_y,
+                    test_function,
+                    &rank);
+
+                cJSON_AddItemToObject(
+                    run,
+                    "tree",
+                    aca_residual_node_to_json(root_node));
+
+                del_residual_node(root_node);
+
+                cJSON_AddNumberToObject(run, "rank", rank);
+
+                /* Store singular values returned by HBACA */
+                cJSON *sigma_array = cJSON_CreateArray();
+
+                for (int i = 0; i < S_h->rows; i++)
+                {
+                    double sigma = S_h->e[i * S_h->rows + i];
+
+                    cJSON_AddItemToArray(
+                        sigma_array,
+                        cJSON_CreateNumber(sigma));
+                }
+
+                cJSON_AddItemToObject(
+                    run,
+                    "singular_values",
+                    sigma_array);
+
+                /* Compute Frobenius norm for each truncated SVD rank */
+                /* Compute Frobenius norm for each truncated SVD rank */
+                cJSON *svd_frob_array = cJSON_CreateArray();
+
+                /* Build the exact matrix once */
+                pfullmatrix Exact =
+                    new_zero_fullmatrix(rows, cols);
+
+                for (int j = 0; j < cols; j++)
+                {
+                    for (int i = 0; i < rows; i++)
+                    {
+                        double xi[dim];
+                        double yj[dim];
+
+                        for (int m = 0; m < dim; m++)
+                        {
+                            xi[m] = nodes_x[m * rows + i];
+                            yj[m] = nodes_y[m * cols + j];
+                        }
+
+                        Exact->e[j * Exact->rows + i] =
+                            test_function(dim, xi, yj);
+                    }
+                }
+
+                /* Current approximation */
+                pfullmatrix F =
+                    new_zero_fullmatrix(rows, cols);
+
+                int svd_rank = S_h->rows;
+
+                for (int k = 1; k <= svd_rank; k++)
+                {
+                    int l = k - 1;
+
+                    double sigma =
+                        S_h->e[l * S_h->rows + l];
+
+                    /* Add one rank-1 SVD term */
+                    for (int j = 0; j < cols; j++)
+                    {
+                        double vt =
+                            V_h->e[j * V_h->rows + l];
+
+                        for (int i = 0; i < rows; i++)
+                        {
+                            double u =
+                                U_h->e[l * U_h->rows + i];
+
+                            F->e[j * F->rows + i] +=
+                                u * sigma * vt;
+                        }
+                    }
+
+                    double frob_norm = 0.0;
+
+                    for (int j = 0; j < cols; j++)
+                    {
+                        for (int i = 0; i < rows; i++)
+                        {
+                            double diff =
+                                Exact->e[j * Exact->rows + i] -
+                                F->e[j * F->rows + i];
+
+                            frob_norm += diff * diff;
+                        }
+                    }
+
+                    frob_norm = sqrt(frob_norm);
+
+                    cJSON_AddItemToArray(
+                        svd_frob_array,
+                        cJSON_CreateNumber(frob_norm));
+
+                    printf("HBACA SVD rank %d: Frobenius norm = %.6e\n",
+                           k,
+                           frob_norm);
+                }
+
+                cJSON_AddItemToObject(
+                    run,
+                    "svd_frobenius_norms",
+                    svd_frob_array);
+
+                del_fullmatrix(F);
+                del_fullmatrix(Exact);
+
+                del_fullmatrix(U_h);
+                del_fullmatrix(S_h);
+                del_fullmatrix(V_h);
+            }
+            else if (d > 0)
+            {
+                printf("BACA (d=%d)\n", d);
+
+                RK_ACA = b_aca_rkmatrix(
+                    eps_hbaca,
+                    d,
+                    dim,
+                    rows,
+                    cols,
+                    nodes_x,
+                    nodes_y,
+                    test_function,
+                    &residuals_u,
+                    &residuals_v,
+                    &rank_increase);
+
+                rank = RK_ACA->kt;
+
+                cJSON_AddNumberToObject(run, "rank", rank);
+
+                pfullmatrix A;
+                pfullmatrix U;
+                pfullmatrix S;
+                pfullmatrix V_T;
+
+                A = new_fullmatrix(RK_ACA->rows, RK_ACA->cols);
+
+                convertrk2_fullmatrix(RK_ACA, A);
+
+                int svd_rank = SVD_truncated(
+                    A,
+                    1e-14,
+                    &U,
+                    &S,
+                    &V_T);
+
+                cJSON_AddNumberToObject(run, "svd_rank", svd_rank);
+
+                /* Store singular values */
+                cJSON *sigma_array = cJSON_CreateArray();
+
+                for (int i = 0; i < svd_rank; i++)
+                {
+                    double sigma = S->e[i * S->rows + i];
+
+                    cJSON_AddItemToArray(
+                        sigma_array,
+                        cJSON_CreateNumber(sigma));
+                }
+
+                cJSON_AddItemToObject(
+                    run,
+                    "singular_values",
+                    sigma_array);
+
+                /* Compute Frobenius norm for each truncated SVD rank */
+                cJSON *svd_frob_array = cJSON_CreateArray();
+
+                /* Build the exact matrix once */
+                pfullmatrix Exact =
+                    new_zero_fullmatrix(rows, cols);
+
+                for (int j = 0; j < cols; j++)
+                {
+                    for (int i = 0; i < rows; i++)
+                    {
+                        double xi[dim];
+                        double yj[dim];
+
+                        for (int m = 0; m < dim; m++)
+                        {
+                            xi[m] = nodes_x[m * rows + i];
+                            yj[m] = nodes_y[m * cols + j];
+                        }
+
+                        Exact->e[j * Exact->rows + i] =
+                            test_function(dim, xi, yj);
+                    }
+                }
+
+                /* Current rank-k approximation */
+                pfullmatrix F =
+                    new_zero_fullmatrix(rows, cols);
+
+                svd_rank = S->rows;
+
+                for (int k = 1; k <= svd_rank; k++)
+                {
+                    int l = k - 1;
+
+                    double sigma =
+                        S->e[l * S->rows + l];
+
+                    /* Incrementally add the new rank-1 term */
+                    for (int j = 0; j < cols; j++)
+                    {
+                        double vt =
+                            V_T->e[j * V_T->rows + l];
+
+                        for (int i = 0; i < rows; i++)
+                        {
+                            double u =
+                                U->e[l * U->rows + i];
+
+                            F->e[j * F->rows + i] +=
+                                u * sigma * vt;
+                        }
+                    }
+
+                    /* Compute Frobenius norm */
+                    double frob_norm = 0.0;
+
+                    for (int j = 0; j < cols; j++)
+                    {
+                        for (int i = 0; i < rows; i++)
+                        {
+                            double diff =
+                                Exact->e[j * Exact->rows + i] -
+                                F->e[j * F->rows + i];
+
+                            frob_norm += diff * diff;
+                        }
+                    }
+
+                    frob_norm = sqrt(frob_norm);
+
+                    cJSON_AddItemToArray(
+                        svd_frob_array,
+                        cJSON_CreateNumber(frob_norm));
+
+                    printf("BACA SVD rank %d: Frobenius norm = %.6e\n",
+                           k,
+                           frob_norm);
+                }
+                cJSON_AddItemToObject(
+                    run,
+                    "svd_frobenius_norms",
+                    svd_frob_array);
+                del_fullmatrix(F);
+                del_fullmatrix(Exact);
+                del_rkmatrix(RK_ACA);
+
+                del_fullmatrix(A);
+                del_fullmatrix(U);
+                del_fullmatrix(S);
+                del_fullmatrix(V_T);
+
+                free(residuals_u);
+                free(residuals_v);
+                free(rank_increase);
+            }
+            else
+            {
+                printf("HBACA residual test requires d > 0.\n");
+                cJSON_Delete(run);
+                continue;
             }
 
-            cJSON_AddItemToObject(
-                run,
-                "singular_values",
-                sigma_array);
-
-            del_fullmatrix(U_h);
-            del_fullmatrix(S_h);
-            del_fullmatrix(V_h);
-        }
-        else if (d > 0)
-        {
-            printf("BACA (d=%d)\n", d);
-
-            RK_ACA = b_aca_rkmatrix(
-                eps_hbaca,
-                d,
-                dim,
-                rows,
-                cols,
-                nodes_x,
-                nodes_y,
-                test_function,
-                &residuals_u,
-                &residuals_v,
-                &rank_increase);
-
-            rank = RK_ACA->kt;
-
-            cJSON_AddNumberToObject(run, "rank", rank);
-
-            pfullmatrix A;
-            pfullmatrix U;
-            pfullmatrix S;
-            pfullmatrix V_T;
-
-            A = new_fullmatrix(RK_ACA->rows, RK_ACA->cols);
-
-            convertrk2_fullmatrix(RK_ACA, A);
-
-            int svd_rank = SVD_truncated(
-                A,
-                1e-14,
-                &U,
-                &S,
-                &V_T);
-
-            cJSON_AddNumberToObject(run, "svd_rank", svd_rank); 
-                        /* Store singular values from the truncated SVD */
-
-            cJSON *sigma_array = cJSON_CreateArray();
-
-            for (int i = 0; i < svd_rank; i++)
-            {
-                double sigma = S->e[i * S->rows + i];
-
-                cJSON_AddItemToArray(
-                    sigma_array,
-                    cJSON_CreateNumber(sigma));
-            }
-
-            cJSON_AddItemToObject(
-                run,
-                "singular_values",
-                sigma_array);
-
-            del_rkmatrix(RK_ACA);
-
-            del_fullmatrix(A);
-            del_fullmatrix(U);
-            del_fullmatrix(S);
-            del_fullmatrix(V_T);
-
-            free(residuals_u);
-            free(residuals_v);
-            free(rank_increase);
-        }
-        else
-        {
-            printf("HBACA residual test requires d > 0.\n");
-            cJSON_Delete(run);
-            continue;
+            cJSON_AddItemToArray(runs, run);
         }
 
-        cJSON_AddItemToArray(runs, run);
+        cJSON_AddItemToObject(hbaca_bench, "runs", runs);
+        cJSON_AddItemToObject(root,
+                              "hbaca_residual_test",
+                              hbaca_bench);
     }
-
-    cJSON_AddItemToObject(hbaca_bench, "runs", runs);
-    cJSON_AddItemToObject(root,
-                          "hbaca_residual_test",
-                          hbaca_bench);
-}
 
     char *json = cJSON_Print(root);
     FILE *fp = fopen(filename, "w");

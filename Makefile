@@ -20,7 +20,8 @@ OBJECTS = \
 	aca_b.o \
 	kernel_functions.o \
 	svd.o \
-	test_functions.o
+	test_functions.o\
+	merge.o
 
 
 CC = gcc
@@ -28,7 +29,7 @@ CFLAGS = -Wall -Wextra -pedantic -g -DUSE_BLAS
 LDLIBS = -lopenblas -lcjson -lm 
 CFLAGS += $(shell pkg-config --cflags openblas)
 LDFLAGS += $(shell pkg-config --libs openblas)
- test_1: test.c $(OBJECTS)
+ test: test.c $(OBJECTS)
 	$(CC) $(CFLAGS)  test.c $(OBJECTS) -o $@ $(LDLIBS)
 
 .PHONY: clean

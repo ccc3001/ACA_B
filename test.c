@@ -14,16 +14,16 @@
 #include <math.h>
 #include <stdbool.h>
 #include <time.h>
-
+#include "merge.h"
 int main()
 {
-    
+
     int d_test = 1;
     int n_test = 5000;
     int nd_test;
     double *nodes_x_test_;
-    int d[] = {32,64};
-    int L[] = {0, 1, 2};
+    int d[] = {32, 64};
+    int L[] = {0};
 
     int size_d = sizeof(d) / sizeof(d[0]);
     int size_L = sizeof(L) / sizeof(L[0]);
@@ -33,59 +33,66 @@ int main()
     double h = 1.0 / ((double)n_test + 1.0);
     // double h = 0.5 / (n_test + 1);
 
-    srand(1); // fixed seed for reproducibility
+    srand(42); // fixed seed for reproducibility
+               /*H_BACA depth L*/
+    // benchmark_merges();
+    //  hard log kernel
+    h = 0.4 / (n_test + 1);
 
-    for (int k = 0; k < nd_test; k++)
+    /*for (int k = 0; k < n_test; k++)
     {
-        nodes_x_test_[k] = ((double)k + 1.0) * h;
-
-        // nodes_x_test_[nd_test + k] = (k + 1) * h;
-
-        nodes_y_test_[k] = 0.2 + ((double)k + 1.0) * h;
-
-        // nodes_y_test_[nd_test + k] = 0.5 + (k + 1) * h;
-    }
-
-    h = 0.4 / (n_test - 1);
-
+        nodes_x_test_[k] = (k + 1) * h;
+        nodes_y_test_[k] = (k + 1) * h + 1e-4;
+    }*/
+    double sum = 0;
     for (int k = 0; k < n_test; k++)
     {
-        nodes_x_test_[k] = 0.1 + k * h;
-        nodes_y_test_[k] = 0.4 + k * h;
+        nodes_x_test_[k] = (k + 1) * h + 0.1;
+        nodes_y_test_[k] = (k + 1) * h + 0.4;
     }
-
-    if (matrix_aca_test(128, 0, false, "test_function_poly8", 1, 4, 1e-12, true, 1e-8, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_poly8,false,1e-8,4) != 0)
+    for (int i = 0; i < n_test; i++)
     {
-        printf("Error in matrix_aca_test for test_function_poly8\n");
-    }
-
-    // medium gaussian kernel
-    h = 0.4 / (n_test - 1);
-
-    for (int k = 0; k < n_test; k++)
-    {
-        nodes_x_test_[k] = 0.1 + k * h;
-        nodes_y_test_[k] = 0.4 + k * h;
-    }
-    for (int i = 0; i < size_L; i++)
-    {
-        for (int j = 0; j < size_d; j++)
+        for (int j = 0; j < n_test; j++)
         {
+            sum += pow(test_function_gaussian(d_test, &nodes_x_test_[i], &nodes_y_test_[j]), 2);
+        }
+    }
+    printf("Sum of test_function_gaussian evaluations: %.6f\n", sum);
+    printf("\n-------------------------------------\n");
+    printf("Running test_function_gaussian\n");
+    printf("=====================================\n");
 
-            if (matrix_aca_test(d[i], L[i], false, "test_function_gaussian", 1, 4, 1e-12, false, 1e-8, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian,true,1e-5,3) != 0)
+    if (matrix_aca_test(32, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian, false, 1e-4, 1, 1784503185) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(64, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian, false, 1e-4, 1, 1784505846) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+    if (matrix_aca_test(128, 0, false, "test_function_gaussian", 1, 4, 1e-12, true, 1e-5, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian, false, 1e-4, 1, 1784507698) != 0)
+    {
+        printf("Error in matrix_aca_test for test_function_gaussian\n");
+    }
+
+    h = 0.4 / (n_test - 1);
+
+    for (int k = 0; k < n_test; k++)
+    {
+        nodes_x_test_[k] = 0.1 + k * h;
+        nodes_y_test_[k] = 0.4 + k * h;
+    }
+
+    /*for (int i = 0; i < size_d; i++)
+    {
+        for (int j = 0; j < size_L; j++)
+        {
+            if (matrix_aca_test(d[i], L[j], false, "test_function_gaussian", 1, 4, 1e-20, false, 1e-5, 5, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_log, true, 1e-5, 1, 42) != 0)
             {
-                printf("Error in matrix_aca_test for test_function_gaussian\n");
+                printf("Error in matrix_aca_test for test_function_log\n");
             }
         }
-    }
-    /*for (int i = 0; i < size_L; i++)
-    {
-        for (int j = 0; j < size_d; j++)
-        {
-            matrix_aca_test(d[j], L[i], true, "test_function_gaussian", 100, 4, 1e-5, false, 1e-5, 1, d_test, nd_test, nd_test, nodes_x_test_, nodes_y_test_, test_function_gaussian);
-        }
     }*/
-    /*H_BACA depth L*/
 
     bool sanity_check = false;
     bool runtime_benchmark = false;
